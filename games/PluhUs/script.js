@@ -23,37 +23,33 @@ let isSabotageMapOpen = false;
 const WORLD_W = 2000;
 const WORLD_H = 1500;
 const walls = [
-    {x: 0, y: 0, w: WORLD_W, h: 50}, // Top Border
-    {x: 0, y: WORLD_H-50, w: WORLD_W, h: 50}, // Bottom Border
-    {x: 0, y: 0, w: 50, h: WORLD_H}, // Left Border
-    {x: WORLD_W-50, y: 0, w: 50, h: WORLD_H}, // Right Border
+    {x: 0, y: 0, w: WORLD_W, h: 50}, 
+    {x: 0, y: WORLD_H-50, w: WORLD_W, h: 50}, 
+    {x: 0, y: 0, w: 50, h: WORLD_H}, 
+    {x: WORLD_W-50, y: 0, w: 50, h: WORLD_H}, 
     
     // Left Hallway (Reactor)
     {x: 400, y: 0, w: 100, h: 600}, 
     {x: 400, y: 900, w: 100, h: 600}, 
     
     // Right Room (Admin)
-    {x: 1000, y: 300, w: 600, h: 100}, // Top wall
-    {x: 1000, y: 1000, w: 600, h: 100}, // Bottom wall
-    {x: 1000, y: 400, w: 100, h: 200}, // Left wall top piece
-    {x: 1000, y: 800, w: 100, h: 200}, // Left wall bottom piece
+    {x: 1000, y: 300, w: 600, h: 100}, 
+    {x: 1000, y: 1000, w: 600, h: 100}, 
+    {x: 1000, y: 400, w: 100, h: 200}, 
+    {x: 1000, y: 800, w: 100, h: 200}, 
 ];
 
 const doors = [
-    // Bridges the gap in the Left Hallway
     { id: 'door-1', x: 400, y: 600, w: 100, h: 300, isClosed: false, closeTimer: 0, cooldown: 0 },
-    // Bridges the gap into the Right Room
     { id: 'door-2', x: 1000, y: 600, w: 100, h: 200, isClosed: false, closeTimer: 0, cooldown: 0 }
 ];
 
 const elecPanel = { x: 900, y: 50, w: 100, h: 60 };
 
 function checkCollision(nx, ny, size) {
-    // Check Walls
     for (let w of walls) {
         if (nx < w.x + w.w && nx + size > w.x && ny < w.y + w.h && ny + size > w.y) return true;
     }
-    // Check Closed Doors
     for (let d of doors) {
         if (d.isClosed && nx < d.x + d.w && nx + size > d.x && ny < d.y + d.h && ny + size > d.y) return true;
     }
@@ -143,14 +139,14 @@ window.triggerSabotage = function(type) {
     if (type === 'lights') {
         if (globalSabotageCooldown === 0 && !lightsOut) {
             lightsOut = true; visionRadius = 150;
-            globalSabotageCooldown = 30; // 30s before another global sabo
+            globalSabotageCooldown = 30; 
         }
     } else if (type.startsWith('door')) {
         let door = doors.find(d => d.id === type);
         if (door && door.cooldown === 0 && !door.isClosed) {
             door.isClosed = true;
-            door.closeTimer = 10; // Doors stay shut for 10 seconds
-            door.cooldown = 20; // 20s cooldown per door
+            door.closeTimer = 10; 
+            door.cooldown = 20; 
         }
     }
 }
@@ -198,11 +194,8 @@ function triggerReport(reporter, deadBody) {
     if (gamePaused || gameWon) return; 
     gamePaused = true; lightsOut = false; visionRadius = 500; 
     
-    // Force close map if open
     isSabotageMapOpen = false;
     document.getElementById('sabotage-layer').style.display = 'none';
-    
-    // Open all doors during meeting
     doors.forEach(d => d.isClosed = false); 
 
     let alivePlayers = [player, ...bots].filter(c => !c.isDead && !c.isEjected);
@@ -325,7 +318,6 @@ window.addEventListener('keydown', (e) => {
     if (e.code === 'Space') e.preventDefault(); 
     if (gamePaused || gameWon || player.isDead || player.isEjected) return; 
 
-    // Sabotage Map Toggle (F)
     if (e.code === 'KeyF') {
         toggleSabotageMap();
     }
@@ -354,9 +346,7 @@ window.addEventListener('keydown', (e) => {
     }
 });
 
-// -----------------------------------------------------------
-// Helper Function: drawNavigationArrow
-// -----------------------------------------------------------
+// --- NAVIGATION ARROW ---
 function drawNavigationArrow() {
     let targetX = elecPanel.x + elecPanel.w / 2;
     let targetY = elecPanel.y + elecPanel.h / 2;
@@ -399,12 +389,11 @@ function gameLoop() {
         if (killCooldown > 0 && !gamePaused && !gameWon) killCooldown--;
         if (globalSabotageCooldown > 0 && !gamePaused && !gameWon) globalSabotageCooldown--;
         
-        // Door logic
         if (!gamePaused && !gameWon) {
             doors.forEach(d => {
                 if (d.closeTimer > 0) {
                     d.closeTimer--;
-                    if (d.closeTimer === 0) d.isClosed = false; // Open door
+                    if (d.closeTimer === 0) d.isClosed = false; 
                 }
                 if (d.cooldown > 0) d.cooldown--;
             });
@@ -420,7 +409,8 @@ function gameLoop() {
     if (killCooldown > 0) {
         killBtn.className = 'action-btn cooldown'; killBtn.innerText = killCooldown;
     } else {
-        let canKill = bots.some(b => !b.isDead && !b.isEjected && Math.hypot(b.x - player.x, bot.y - player.y) < 90);
+        // THE BUG FIX IS HERE: b.y instead of bot.y
+        let canKill = bots.some(b => !b.isDead && !b.isEjected && Math.hypot(b.x - player.x, b.y - player.y) < 90);
         killBtn.className = (canKill && !gamePaused && !lightsOut) ? 'action-btn active-kill' : 'action-btn';
         killBtn.innerText = 'KILL (E)';
     }
@@ -428,20 +418,17 @@ function gameLoop() {
     let canReport = bots.some(b => b.isDead && !b.isCleanedUp && Math.hypot(player.x - b.x, player.y - b.y) < 120);
     document.getElementById('report-btn').className = canReport && !gamePaused ? 'action-btn active-report' : 'action-btn';
 
-    // Update Map Sabotage Icons
     if (isSabotageMapOpen) {
         document.getElementById('sabo-lights').className = (globalSabotageCooldown > 0 || lightsOut) ? 'sabo-icon lights-icon cooldown' : 'sabo-icon lights-icon';
         doors.forEach(d => {
             let dBtn = document.getElementById('sabo-' + d.id);
             if (dBtn) {
                 dBtn.className = (d.cooldown > 0 || d.isClosed) ? 'sabo-icon door-icon cooldown' : 'sabo-icon door-icon';
-                // Optional: show X when closed
                 dBtn.innerText = d.isClosed ? 'X' : '🚪';
             }
         });
     }
 
-    // Bot Auto-Report 
     if (!gamePaused && !gameWon && !lightsOut) {
         bots.forEach(bot => {
             if (!bot.isDead && !bot.isEjected) {
@@ -460,13 +447,10 @@ function gameLoop() {
     ctx.fillStyle = "#2a2a2a"; ctx.fillRect(0, 0, WORLD_W, WORLD_H);
     ctx.fillStyle = "#4a5a6a"; walls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
 
-    // Draw Doors
     doors.forEach(d => {
         if (d.isClosed) {
-            ctx.fillStyle = "#b53a3a"; // Red metal door color
+            ctx.fillStyle = "#b53a3a"; 
             ctx.fillRect(d.x, d.y, d.w, d.h);
-            
-            // Draw caution stripes or metal lines
             ctx.strokeStyle = "#111"; ctx.lineWidth = 5;
             ctx.strokeRect(d.x, d.y, d.w, d.h);
             ctx.beginPath();
@@ -476,7 +460,6 @@ function gameLoop() {
         }
     });
 
-    // Draw the Electrical Box!
     ctx.fillStyle = lightsOut ? "#ff4747" : "#555"; 
     ctx.fillRect(elecPanel.x, elecPanel.y, elecPanel.w, elecPanel.h);
     ctx.fillStyle = "white"; ctx.font = "bold 20px 'Varela Round'"; ctx.textAlign = "center";
@@ -492,15 +475,13 @@ function gameLoop() {
 
     ctx.restore();
 
-    // Fog of War / Lights Out
     if (!gamePaused && !gameWon) {
         let grad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, visionRadius * 0.3, canvas.width/2, canvas.height/2, visionRadius);
         grad.addColorStop(0, 'rgba(0,0,0,0)'); grad.addColorStop(1, 'rgba(0,0,0,0.98)');
         ctx.fillStyle = grad; ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
-    // Navigation Arrow
-    if (lightsOut) {
+    if (lightsOut && !gamePaused && !gameWon) {
         drawNavigationArrow();
     }
 
