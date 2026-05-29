@@ -1,70 +1,40 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-const player = { x: 400, y: 300, color: '#e74c3c', name: 'Red' };
+// Load your specific sprites
+const standImg = new Image(); standImg.src = 'Stand_mogus.png';
+const walkImg = new Image();  walkImg.src = 'walk_mogus_1.png';
+
+// Define entities with a state
+const player = { x: 400, y: 300, isMoving: false };
 const bots = [
-    { x: 100, y: 100, color: '#2ecc71', name: 'Green', memory: [] },
-    { x: 600, y: 400, color: '#3498db', name: 'Blue', memory: [] }
+    { x: 100, y: 100, isMoving: true, vx: 1, vy: 1 },
+    { x: 600, y: 400, isMoving: true, vx: -1, vy: 2 }
 ];
-let bodies = [];
-
-const keys = {};
-window.addEventListener('keydown', (e) => keys[e.code] = true);
-window.addEventListener('keyup', (e) => keys[e.code] = false);
-
-function reportBodies() {
-    bodies.forEach(body => {
-        bots.forEach(bot => {
-            let dist = Math.hypot(bot.x - body.x, bot.y - body.y);
-            if (dist < 150) {
-                const thought = bot.memory.includes('Red') 
-                    ? "I saw Red near the body earlier... Red is SUS!" 
-                    : "I found a body, but I didn't see who did it.";
-                alert(`${bot.name} reports: "${thought}"`);
-                bodies = []; 
-            }
-        });
-    });
-}
-
-function update() {
-    if(keys['KeyW']) player.y -= 5;
-    if(keys['KeyS']) player.y += 5;
-    if(keys['KeyA']) player.x -= 5;
-    if(keys['KeyD']) player.x += 5;
-    if(keys['KeyE']) bodies.push({x: player.x, y: player.y});
-    if(keys['KeyR']) reportBodies();
-
-    bots.forEach(bot => {
-        bot.x += (Math.random() - 0.5) * 4;
-        bot.y += (Math.random() - 0.5) * 4;
-        
-        // AI Memory: If bot gets within 150 pixels of player, "remember" them
-        if(Math.hypot(bot.x - player.x, bot.y - player.y) < 150) {
-            if(!bot.memory.includes('Red')) bot.memory.push('Red');
-        }
-    });
-}
 
 function draw() {
-    ctx.clearRect(0, 0, 800, 600);
-    
-    // Draw Bodies
-    ctx.fillStyle = '#7f8c8d';
-    bodies.forEach(b => ctx.fillRect(b.x, b.y, 30, 30));
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw Bots
-    bots.forEach(b => {
-        ctx.fillStyle = b.color;
-        ctx.fillRect(b.x, b.y, 30, 30);
+    // Draw all characters
+    [player, ...bots].forEach(entity => {
+        const sprite = entity.isMoving ? walkImg : standImg;
+        ctx.drawImage(sprite, entity.x, entity.y, 50, 50);
     });
 
-    // Draw Player
-    ctx.fillStyle = player.color;
-    ctx.fillRect(player.x, player.y, 30, 30);
+    // Simple movement update
+    bots.forEach(b => {
+        b.x += b.vx;
+        b.y += b.vy;
+        // Bounce
+        if(b.x < 0 || b.x > 750) b.vx *= -1;
+        if(b.y < 0 || b.y > 550) b.vy *= -1;
+    });
 
-    update();
     requestAnimationFrame(draw);
 }
 
-draw();
+// Start only when images are ready
+let loadedImages = 0;
+const checkLoad = () => { if(++loadedImages === 2) draw(); };
+standImg.onload = checkLoad;
+walkImg.onload = checkLoad;
