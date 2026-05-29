@@ -17,9 +17,24 @@
 
         <div id="hud-buttons">
             <div id="use-btn" class="action-btn">USE (Spc)</div>
-            <div id="sabotage-btn" class="action-btn active-sabotage">SABOTAGE (F)</div>
+            <div id="sabotage-btn" class="action-btn active-sabotage" onclick="toggleSabotageMap()">SABO (F)</div>
             <div id="kill-btn" class="action-btn">KILL (E)</div>
             <div id="report-btn" class="action-btn">REPORT (R)</div>
+        </div>
+
+        <div id="sabotage-layer" style="display: none;">
+            <div id="sabo-map-container">
+                <h2 style="color: #ff4747; text-align: center; margin-top: 0;">SABOTAGE MAP</h2>
+                <div id="sabo-map">
+                    <div class="map-room" style="top: 0; left: 0; width: 20%; height: 100%;"></div>
+                    <div class="map-room" style="top: 20%; left: 50%; width: 30%; height: 46%;"></div>
+                    
+                    <button id="sabo-lights" class="sabo-icon lights-icon" style="top: 10%; left: 45%;" onclick="triggerSabotage('lights')">⚡</button>
+                    <button id="sabo-door-1" class="sabo-icon door-icon" style="top: 50%; left: 15%;" onclick="triggerSabotage('door-1')">🚪</button>
+                    <button id="sabo-door-2" class="sabo-icon door-icon" style="top: 45%; left: 45%;" onclick="triggerSabotage('door-2')">🚪</button>
+                </div>
+                <button class="vote-btn skip-btn" style="margin-top: 15px; width: 100%;" onclick="toggleSabotageMap()">Close Map</button>
+            </div>
         </div>
         
         <div id="voting-layer" style="display: none;">
