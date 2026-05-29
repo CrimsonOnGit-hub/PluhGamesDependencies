@@ -12,7 +12,7 @@ let gamePaused = false;
 let gameWon = false; 
 
 // --- TIMERS & COOLDOWNS ---
-let killCooldown = 15; // Start with a 15-second cooldown
+let killCooldown = 15; 
 let lastTick = Date.now();
 let lightsOut = false;
 let sabotageCooldown = false;
@@ -31,6 +31,9 @@ const walls = [
     {x: 1000, y: 300, w: 600, h: 100}, 
     {x: 1000, y: 1000, w: 600, h: 100} 
 ];
+
+// The Electrical Box Location (Top middle of the map)
+const elecPanel = { x: 900, y: 50, w: 100, h: 60 };
 
 function checkCollision(nx, ny, size) {
     for (let w of walls) {
@@ -111,6 +114,36 @@ const bots = [
     new Crewmate(800, 200, false, 'White'), new Crewmate(1500, 800, false, 'Orange')
 ];
 
+// --- MINI-GAME LOGIC ---
+let switchStates = [false, false, false, false, false];
+
+window.openLightsTask = function() {
+    gamePaused = true;
+    switchStates = [false, false, false, false, false];
+    document.querySelectorAll('.switch').forEach(s => s.className = 'switch off');
+    document.getElementById('task-layer').style.display = 'flex';
+}
+
+window.closeTask = function() {
+    document.getElementById('task-layer').style.display = 'none';
+    gamePaused = false;
+}
+
+window.toggleSwitch = function(el) {
+    let index = Array.from(el.parentNode.children).indexOf(el);
+    switchStates[index] = !switchStates[index]; // Toggle state
+    el.className = switchStates[index] ? 'switch on' : 'switch off';
+    
+    // Check if all are on
+    if (switchStates.every(s => s === true)) {
+        setTimeout(() => {
+            lightsOut = false;
+            visionRadius = 500;
+            closeTask();
+        }, 500);
+    }
+}
+
 // --- CHAT & MEETING SYSTEM ---
 function addChatMsg(author, text) {
     const box = document.getElementById('chat-box');
@@ -137,23 +170,20 @@ function triggerReport(reporter, deadBody) {
 
     let delay = 1000;
     
-    // 1. Initial Report
     setTimeout(() => { addChatMsg(reporter.colorName, `Where? I found a body.`); }, delay);
     delay += 1000;
 
-    // 2. Random Lobby Chatter (Bots acting confused)
     alivePlayers.forEach(b => {
         if (!b.isPlayer && b !== reporter && Math.random() > 0.3) {
             let phrases = ["Where?", "Who?", "I was doing tasks.", "skip?", "any proof?", "What happened?"];
             let phrase = phrases[Math.floor(Math.random() * phrases.length)];
             setTimeout(() => addChatMsg(b.colorName, phrase), delay);
-            delay += Math.random() * 800 + 400; // Stagger their messages
+            delay += Math.random() * 800 + 400; 
         }
     });
 
     delay += 1000;
 
-    // 3. The Accusations
     let selfReportAccusers = 0;
     let isSelfReport = (reporter === player && deadBody.killer === player);
 
@@ -176,7 +206,6 @@ function triggerReport(reporter, deadBody) {
         });
     }
 
-    // Show Voting Buttons
     setTimeout(() => {
         const btnContainer = document.getElementById('voting-buttons');
         alivePlayers.forEach(p => {
@@ -222,7 +251,6 @@ function castVote(playerChoice, suspect, alivePlayers, selfReportAccusers) {
         }
         [player, ...bots].forEach(c => { if (c.isDead) c.isCleanedUp = true; });
         
-        // Reset Cooldown after a meeting
         killCooldown = 15; 
         gamePaused = false; 
         checkWinCondition(); 
@@ -249,14 +277,25 @@ const keys = {};
 window.addEventListener('keyup', (e) => keys[e.code] = false);
 window.addEventListener('keydown', (e) => {
     keys[e.code] = true;
+    
+    // Prevent spacebar from scrolling the webpage down
+    if (e.code === 'Space') e.preventDefault(); 
+
     if (gamePaused || gameWon || player.isDead || player.isEjected) return; 
 
-    // Kill (Requires Cooldown to be 0)
-    if (e.code === 'KeyE' && killCooldown === 0) {
+    // USE Logic (Spacebar)
+    if (e.code === 'Space') {
+        let nearPanel = Math.hypot(player.x - (elecPanel.x + elecPanel.w/2), player.y - (elecPanel.y + elecPanel.h/2)) < 150;
+        if (lightsOut && nearPanel) {
+            openLightsTask();
+        }
+    }
+
+    if (e.code === 'KeyE' && killCooldown === 0 && !lightsOut) { // Can't kill in pitch black to prevent cheese
         for (let bot of bots) {
             if (!bot.isDead && !bot.isEjected && Math.hypot(bot.x - player.x, bot.y - player.y) < 90) { 
                 bot.isDead = true; bot.killer = player; 
-                killCooldown = 20; // Set cooldown to 20 seconds after a kill
+                killCooldown = 20; 
                 checkWinCondition(); 
                 break; 
             }
@@ -273,7 +312,8 @@ window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyF' && !sabotageCooldown) {
         lightsOut = true; visionRadius = 150; sabotageCooldown = true;
         document.getElementById('sabotage-btn').classList.add('cooldown');
-        setTimeout(() => { lightsOut = false; visionRadius = 500; }, 10000); 
+        
+        // Cooldown timer only (no more auto-fix!)
         setTimeout(() => { document.getElementById('sabotage-btn').classList.remove('cooldown'); sabotageCooldown = false; }, 30000); 
     }
 });
@@ -282,7 +322,6 @@ window.addEventListener('keydown', (e) => {
 function gameLoop() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    // Cooldown Timer Tick (Runs every 1 second)
     let now = Date.now();
     if (now - lastTick >= 1000) {
         if (killCooldown > 0 && !gamePaused && !gameWon) killCooldown--;
@@ -290,13 +329,15 @@ function gameLoop() {
     }
 
     // Update HUD Buttons
+    let nearPanel = Math.hypot(player.x - (elecPanel.x + elecPanel.w/2), player.y - (elecPanel.y + elecPanel.h/2)) < 150;
+    document.getElementById('use-btn').className = (lightsOut && nearPanel && !gamePaused) ? 'action-btn active-use' : 'action-btn';
+
     const killBtn = document.getElementById('kill-btn');
     if (killCooldown > 0) {
-        killBtn.className = 'action-btn cooldown';
-        killBtn.innerText = killCooldown; // Show numbers ticking down
+        killBtn.className = 'action-btn cooldown'; killBtn.innerText = killCooldown;
     } else {
         let canKill = bots.some(b => !b.isDead && !b.isEjected && Math.hypot(b.x - player.x, b.y - player.y) < 90);
-        killBtn.className = canKill && !gamePaused ? 'action-btn active-kill' : 'action-btn';
+        killBtn.className = (canKill && !gamePaused && !lightsOut) ? 'action-btn active-kill' : 'action-btn';
         killBtn.innerText = 'KILL (E)';
     }
 
@@ -318,6 +359,17 @@ function gameLoop() {
 
     ctx.fillStyle = "#2a2a2a"; ctx.fillRect(0, 0, WORLD_W, WORLD_H);
     ctx.fillStyle = "#4a5a6a"; walls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
+
+    // Draw the Electrical Box!
+    ctx.fillStyle = lightsOut ? "#ff4747" : "#555"; 
+    ctx.fillRect(elecPanel.x, elecPanel.y, elecPanel.w, elecPanel.h);
+    ctx.fillStyle = "white"; ctx.font = "bold 20px 'Varela Round'"; ctx.textAlign = "center";
+    ctx.fillText("⚡", elecPanel.x + elecPanel.w/2, elecPanel.y + elecPanel.h/2 + 7);
+    if (lightsOut) {
+        // Draw an alert ping above it
+        ctx.fillStyle = "rgba(255, 71, 71, 0.5)";
+        ctx.beginPath(); ctx.arc(elecPanel.x + elecPanel.w/2, elecPanel.y - 20, 15 + Math.sin(now/200)*5, 0, Math.PI*2); ctx.fill();
+    }
 
     let allEntities = [...bots, player];
     allEntities.forEach(e => { if (e.isDead) { e.update(); e.draw(ctx); } });
