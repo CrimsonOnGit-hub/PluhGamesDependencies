@@ -11,7 +11,9 @@ const drawSize = 60;
 let gamePaused = false; 
 let gameWon = false; 
 
-// Sabotage System
+// --- TIMERS & COOLDOWNS ---
+let killCooldown = 15; // Start with a 15-second cooldown
+let lastTick = Date.now();
 let lightsOut = false;
 let sabotageCooldown = false;
 let visionRadius = 500; 
@@ -20,21 +22,19 @@ let visionRadius = 500;
 const WORLD_W = 2000;
 const WORLD_H = 1500;
 const walls = [
-    {x: 0, y: 0, w: WORLD_W, h: 50}, // Top Wall
-    {x: 0, y: WORLD_H-50, w: WORLD_W, h: 50}, // Bottom Wall
-    {x: 0, y: 0, w: 50, h: WORLD_H}, // Left Wall
-    {x: WORLD_W-50, y: 0, w: 50, h: WORLD_H}, // Right Wall
-    {x: 400, y: 0, w: 100, h: 600}, // Hallway block 1
-    {x: 400, y: 900, w: 100, h: 600}, // Hallway block 2
-    {x: 1000, y: 300, w: 600, h: 100}, // Room divider
-    {x: 1000, y: 1000, w: 600, h: 100} // Room divider
+    {x: 0, y: 0, w: WORLD_W, h: 50}, 
+    {x: 0, y: WORLD_H-50, w: WORLD_W, h: 50}, 
+    {x: 0, y: 0, w: 50, h: WORLD_H}, 
+    {x: WORLD_W-50, y: 0, w: 50, h: WORLD_H}, 
+    {x: 400, y: 0, w: 100, h: 600}, 
+    {x: 400, y: 900, w: 100, h: 600}, 
+    {x: 1000, y: 300, w: 600, h: 100}, 
+    {x: 1000, y: 1000, w: 600, h: 100} 
 ];
 
 function checkCollision(nx, ny, size) {
     for (let w of walls) {
-        if (nx < w.x + w.w && nx + size > w.x && ny < w.y + w.h && ny + size > w.y) {
-            return true;
-        }
+        if (nx < w.x + w.w && nx + size > w.x && ny < w.y + w.h && ny + size > w.y) return true;
     }
     return false;
 }
@@ -45,13 +45,11 @@ class Crewmate {
         this.x = x; this.y = y;
         this.isPlayer = isPlayer; this.colorName = colorName;
         this.isDead = false; this.isEjected = false; this.isCleanedUp = false; 
-        this.killer = null; // Tracks who killed them
+        this.killer = null; 
         
         this.vx = isPlayer ? 0 : (Math.random() > 0.5 ? 2.5 : -2.5);
         this.vy = isPlayer ? 0 : (Math.random() > 0.5 ? 2.5 : -2.5);
         this.isMoving = false; this.animTimer = 0; this.showWalkFrame = false;
-
-        // Bot Memory: Remembers seeing two players together
         this.memory = {}; 
     }
 
@@ -69,26 +67,23 @@ class Crewmate {
         } else {
             nx += this.vx; ny += this.vy; this.isMoving = true; 
             if (checkCollision(nx, ny, drawSize)) {
-                this.vx *= -1; this.vy *= -1; // Bounce
-                nx = this.x; ny = this.y; // Abort move
+                this.vx *= -1; this.vy *= -1; 
+                nx = this.x; ny = this.y; 
             }
         }
 
-        if (!checkCollision(nx, ny, drawSize)) {
-            this.x = nx; this.y = ny;
-        }
+        if (!checkCollision(nx, ny, drawSize)) { this.x = nx; this.y = ny; }
 
         if (this.isMoving) {
             this.animTimer++;
             if (this.animTimer > 8) { this.showWalkFrame = !this.showWalkFrame; this.animTimer = 0; }
         } else { this.showWalkFrame = false; }
 
-        // Update Bot Memory (Sight)
         if (!this.isPlayer && !lightsOut) {
             [player, ...bots].forEach(other => {
                 if (other !== this && !other.isDead && !other.isEjected) {
                     if (Math.hypot(this.x - other.x, this.y - other.y) < 400) {
-                        this.memory[other.colorName] = Date.now(); // Log last seen time
+                        this.memory[other.colorName] = Date.now(); 
                     }
                 }
             });
@@ -123,12 +118,12 @@ function addChatMsg(author, text) {
     msg.className = 'chat-msg';
     msg.innerHTML = `<span class="name" style="color: ${author.toLowerCase()}">${author}:</span> ${text}`;
     box.appendChild(msg);
-    box.scrollTop = box.scrollHeight; // Auto-scroll
+    box.scrollTop = box.scrollHeight; 
 }
 
 function triggerReport(reporter, deadBody) {
     if (gamePaused || gameWon) return; 
-    gamePaused = true; lightsOut = false; visionRadius = 500; // Reset lights
+    gamePaused = true; lightsOut = false; visionRadius = 500; 
     document.getElementById('sabotage-btn').classList.remove('cooldown');
 
     let alivePlayers = [player, ...bots].filter(c => !c.isDead && !c.isEjected);
@@ -136,50 +131,52 @@ function triggerReport(reporter, deadBody) {
     if (!suspect) suspect = { colorName: "Nobody" }; 
 
     document.getElementById('voting-title').innerText = "Emergency Meeting";
-    document.getElementById('chat-box').innerHTML = ''; // Clear chat
+    document.getElementById('chat-box').innerHTML = ''; 
     document.getElementById('voting-buttons').innerHTML = ''; 
     document.getElementById('voting-layer').style.display = 'flex'; 
 
     let delay = 1000;
     
-    // Self-Report Logic
+    // 1. Initial Report
+    setTimeout(() => { addChatMsg(reporter.colorName, `Where? I found a body.`); }, delay);
+    delay += 1000;
+
+    // 2. Random Lobby Chatter (Bots acting confused)
+    alivePlayers.forEach(b => {
+        if (!b.isPlayer && b !== reporter && Math.random() > 0.3) {
+            let phrases = ["Where?", "Who?", "I was doing tasks.", "skip?", "any proof?", "What happened?"];
+            let phrase = phrases[Math.floor(Math.random() * phrases.length)];
+            setTimeout(() => addChatMsg(b.colorName, phrase), delay);
+            delay += Math.random() * 800 + 400; // Stagger their messages
+        }
+    });
+
+    delay += 1000;
+
+    // 3. The Accusations
     let selfReportAccusers = 0;
     let isSelfReport = (reporter === player && deadBody.killer === player);
 
     if (isSelfReport) {
-        // Check if bots remember seeing player and victim together recently
         alivePlayers.forEach(b => {
             if (!b.isPlayer && b.memory[player.colorName] > Date.now() - 15000 && b.memory[deadBody.colorName] > Date.now() - 15000) {
                 selfReportAccusers++;
-            }
-        });
-    }
-
-    // Sequence the chat
-    setTimeout(() => { addChatMsg(reporter.colorName, `Where? I found a body.`); }, delay);
-    delay += 1500;
-
-    if (isSelfReport && selfReportAccusers > 0) {
-        // Bots caught you self-reporting
-        alivePlayers.forEach(b => {
-            if (!b.isPlayer && b.memory[player.colorName] > Date.now() - 15000) {
                 setTimeout(() => { addChatMsg(b.colorName, `SELF REPORT! I saw Red with them!`); }, delay);
                 delay += 800;
             }
         });
     } else {
-        // Normal Bot Accusations
         alivePlayers.forEach(b => {
             if (!b.isPlayer && suspect.colorName !== "Nobody" && suspect.colorName !== b.colorName) {
                 setTimeout(() => { 
-                    addChatMsg(b.colorName, `I saw ${suspect.colorName} go with ${deadBody.colorName} and now ${deadBody.colorName} is dead, and ${suspect.colorName} is running! ${suspect.colorName} is sus!`); 
+                    addChatMsg(b.colorName, `I saw ${suspect.colorName} go with ${deadBody.colorName} and now ${deadBody.colorName} is dead! ${suspect.colorName} is sus!`); 
                 }, delay);
                 delay += 1000;
             }
         });
     }
 
-    // Show Voting Buttons after chat
+    // Show Voting Buttons
     setTimeout(() => {
         const btnContainer = document.getElementById('voting-buttons');
         alivePlayers.forEach(p => {
@@ -200,16 +197,11 @@ function castVote(playerChoice, suspect, alivePlayers, selfReportAccusers) {
     alivePlayers.forEach(p => votes[p.colorName] = 0);
     if (playerChoice) votes[playerChoice.colorName]++; else votes["Skip"]++;
 
-    // AI Voting Logic
     alivePlayers.forEach(p => {
         if (!p.isPlayer) {
-            if (selfReportAccusers >= 3) {
-                votes['Red']++; // They dogpile you if caught self reporting
-            } else if (suspect.colorName !== "Nobody") {
-                votes[suspect.colorName]++;
-            } else {
-                votes["Skip"]++;
-            }
+            if (selfReportAccusers >= 3) votes['Red']++; 
+            else if (suspect.colorName !== "Nobody") votes[suspect.colorName]++;
+            else votes["Skip"]++;
         }
     });
 
@@ -229,6 +221,9 @@ function castVote(playerChoice, suspect, alivePlayers, selfReportAccusers) {
             if (ejectedObj) ejectedObj.isEjected = true;
         }
         [player, ...bots].forEach(c => { if (c.isDead) c.isCleanedUp = true; });
+        
+        // Reset Cooldown after a meeting
+        killCooldown = 15; 
         gamePaused = false; 
         checkWinCondition(); 
     }, 3000);
@@ -246,7 +241,7 @@ function triggerEnd(message, color) {
     document.getElementById('end-text').innerText = message;
     document.getElementById('end-text').style.color = color;
     document.getElementById('end-screen').style.display = 'flex';
-    setTimeout(() => location.reload(), 4000); // Quick hard reset
+    setTimeout(() => location.reload(), 4000); 
 }
 
 // --- INPUTS & ACTIONS ---
@@ -256,10 +251,14 @@ window.addEventListener('keydown', (e) => {
     keys[e.code] = true;
     if (gamePaused || gameWon || player.isDead || player.isEjected) return; 
 
-    if (e.code === 'KeyE') {
+    // Kill (Requires Cooldown to be 0)
+    if (e.code === 'KeyE' && killCooldown === 0) {
         for (let bot of bots) {
             if (!bot.isDead && !bot.isEjected && Math.hypot(bot.x - player.x, bot.y - player.y) < 90) { 
-                bot.isDead = true; bot.killer = player; checkWinCondition(); break; 
+                bot.isDead = true; bot.killer = player; 
+                killCooldown = 20; // Set cooldown to 20 seconds after a kill
+                checkWinCondition(); 
+                break; 
             }
         }
     }
@@ -271,12 +270,11 @@ window.addEventListener('keydown', (e) => {
         }
     }
 
-    // Sabotage
     if (e.code === 'KeyF' && !sabotageCooldown) {
         lightsOut = true; visionRadius = 150; sabotageCooldown = true;
         document.getElementById('sabotage-btn').classList.add('cooldown');
-        setTimeout(() => { lightsOut = false; visionRadius = 500; }, 10000); // Fix lights after 10s
-        setTimeout(() => { document.getElementById('sabotage-btn').classList.remove('cooldown'); sabotageCooldown = false; }, 30000); // 30s cooldown
+        setTimeout(() => { lightsOut = false; visionRadius = 500; }, 10000); 
+        setTimeout(() => { document.getElementById('sabotage-btn').classList.remove('cooldown'); sabotageCooldown = false; }, 30000); 
     }
 });
 
@@ -284,12 +282,27 @@ window.addEventListener('keydown', (e) => {
 function gameLoop() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    let canKill = bots.some(b => !b.isDead && !b.isEjected && Math.hypot(b.x - player.x, b.y - player.y) < 90);
+    // Cooldown Timer Tick (Runs every 1 second)
+    let now = Date.now();
+    if (now - lastTick >= 1000) {
+        if (killCooldown > 0 && !gamePaused && !gameWon) killCooldown--;
+        lastTick = now;
+    }
+
+    // Update HUD Buttons
+    const killBtn = document.getElementById('kill-btn');
+    if (killCooldown > 0) {
+        killBtn.className = 'action-btn cooldown';
+        killBtn.innerText = killCooldown; // Show numbers ticking down
+    } else {
+        let canKill = bots.some(b => !b.isDead && !b.isEjected && Math.hypot(b.x - player.x, b.y - player.y) < 90);
+        killBtn.className = canKill && !gamePaused ? 'action-btn active-kill' : 'action-btn';
+        killBtn.innerText = 'KILL (E)';
+    }
+
     let canReport = bots.some(b => b.isDead && !b.isCleanedUp && Math.hypot(player.x - b.x, player.y - b.y) < 120);
-    document.getElementById('kill-btn').className = canKill && !gamePaused ? 'action-btn active-kill' : 'action-btn';
     document.getElementById('report-btn').className = canReport && !gamePaused ? 'action-btn active-report' : 'action-btn';
 
-    // Bot Auto-Report (Bots are blind in the dark!)
     if (!gamePaused && !gameWon && !lightsOut) {
         bots.forEach(bot => {
             if (!bot.isDead && !bot.isEjected) {
@@ -303,18 +316,15 @@ function gameLoop() {
     ctx.save();
     ctx.translate(canvas.width / 2 - player.x - drawSize / 2, canvas.height / 2 - player.y - drawSize / 2);
 
-    // Draw Floor & Walls
     ctx.fillStyle = "#2a2a2a"; ctx.fillRect(0, 0, WORLD_W, WORLD_H);
     ctx.fillStyle = "#4a5a6a"; walls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
 
-    // Draw Entities
     let allEntities = [...bots, player];
     allEntities.forEach(e => { if (e.isDead) { e.update(); e.draw(ctx); } });
     allEntities.forEach(e => { if (!e.isDead) { e.update(); e.draw(ctx); } });
 
     ctx.restore();
 
-    // Fog of War / Lights Out
     if (!gamePaused && !gameWon) {
         let grad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, visionRadius * 0.3, canvas.width/2, canvas.height/2, visionRadius);
         grad.addColorStop(0, 'rgba(0,0,0,0)'); grad.addColorStop(1, 'rgba(0,0,0,0.98)');
