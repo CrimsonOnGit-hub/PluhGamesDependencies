@@ -2,13 +2,18 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>PluhUs</title>
+    <title>PluhUs Prototype</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div id="game-container">
         <canvas id="gameCanvas" width="800" height="600"></canvas>
-        <div id="ui-layer">Press E to Kill | Press R to Report</div>
+        <div id="ui-layer">PluhUs Engine | WASD to Move</div>
+        
+        <div id="voting-layer" style="display: none;">
+            <h2 id="voting-title">Emergency Meeting!</h2>
+            <div id="voting-buttons"></div>
+        </div>
     </div>
     <script src="script.js"></script>
 </body>
