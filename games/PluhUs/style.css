@@ -1,296 +1,35 @@
-/* --- GLOBAL STYLES --- */
-body {
-    margin: 0;
-    background-color: #000;
-    overflow: hidden; /* Removes browser scrollbars for fullscreen immersion */
-    font-family: 'Varela Round', sans-serif;
-    color: white;
-    user-select: none; /* Prevents text highlights while clicking around fast */
+/* --- SABOTAGE MAP UI --- */
+#sabotage-layer {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0, 0, 0, 0.4); display: flex; align-items: center; justify-content: center; z-index: 8;
+    pointer-events: auto;
 }
 
-#game-container {
-    position: relative;
-    width: 100vw;
-    height: 100vh;
+#sabo-map-container {
+    background: #111; border: 6px solid #444; border-radius: 15px;
+    padding: 20px; width: 700px; height: 500px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.9);
 }
 
-canvas {
-    display: block;
+#sabo-map {
+    position: relative; width: 100%; height: 350px;
+    background: #222; border: 3px solid #555; border-radius: 10px;
+    overflow: hidden;
 }
 
-/* --- THE GAME HUD LAYER --- */
-#task-list {
-    position: absolute;
-    top: 20px;
-    left: 20px;
-    background: rgba(0, 0, 0, 0.55);
-    padding: 15px;
-    border-radius: 10px;
-    border-left: 5px solid #ff4747;
-    z-index: 5;
-    pointer-events: none;
+.map-room {
+    position: absolute; background: #333; border: 2px solid #555;
 }
 
-#hud-buttons {
-    position: absolute;
-    bottom: 30px;
-    right: 30px;
-    display: flex;
-    gap: 20px;
-    z-index: 5;
+.sabo-icon {
+    position: absolute; width: 50px; height: 50px; border-radius: 50%;
+    font-size: 24px; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; border: 3px solid white; transition: 0.1s;
 }
 
-.action-btn {
-    width: 85px;
-    height: 85px;
-    border-radius: 50%;
-    background: rgba(0, 0, 0, 0.65);
-    border: 4px solid rgba(255, 255, 255, 0.2);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: bold;
-    font-size: 13px;
-    color: rgba(255, 255, 255, 0.3);
-    text-align: center;
-    transition: all 0.15s ease;
-}
+.sabo-icon:hover { transform: scale(1.1); }
+.sabo-icon:active { transform: scale(0.9); }
 
-/* Dynamic State Classes triggered via JS */
-.action-btn.active-kill {
-    border-color: #ff4747;
-    background: rgba(255, 71, 71, 0.25);
-    color: #ff4747;
-    box-shadow: 0 0 15px rgba(255, 71, 71, 0.4);
-    cursor: pointer;
-}
-
-.action-btn.active-report {
-    border-color: #f1c40f;
-    background: rgba(241, 196, 15, 0.25);
-    color: #f1c40f;
-    box-shadow: 0 0 15px rgba(241, 196, 15, 0.4);
-    cursor: pointer;
-}
-
-.action-btn.active-sabotage {
-    border-color: #e67e22;
-    background: rgba(230, 126, 34, 0.25);
-    color: #e67e22;
-    cursor: pointer;
-}
-
-.action-btn.active-use {
-    border-color: #3498db;
-    background: rgba(52, 152, 219, 0.25);
-    color: #3498db;
-    box-shadow: 0 0 15px rgba(52, 152, 219, 0.4);
-    cursor: pointer;
-}
-
-.action-btn.cooldown {
-    border-color: #444;
-    background: rgba(20, 20, 20, 0.8);
-    color: #777;
-    font-size: 22px;
-    pointer-events: none;
-}
-
-/* --- THE MEETING TABLET & CHAT SYSTEM --- */
-#voting-layer {
-    position: absolute;
-    top: 0; left: 0; width: 100%; height: 100%;
-    background: rgba(0, 0, 0, 0.75);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10;
-}
-
-#tablet-screen {
-    background: #87b2c7;
-    border: 12px solid #2a3439;
-    border-radius: 20px;
-    width: 85%;
-    max-width: 800px;
-    height: 75vh;
-    padding: 25px;
-    display: flex;
-    flex-direction: column;
-    color: #111;
-    box-shadow: 0 15px 40px rgba(0,0,0,0.8);
-}
-
-#voting-title {
-    margin-top: 0;
-    margin-bottom: 15px;
-    font-size: 26px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-#chat-box {
-    flex-grow: 1;
-    background: #eef2f5;
-    border-radius: 12px;
-    border: 4px solid #526873;
-    margin-bottom: 20px;
-    padding: 15px;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    box-shadow: inset 0 3px 10px rgba(0,0,0,0.15);
-}
-
-.chat-msg {
-    background: white;
-    padding: 10px 18px;
-    border-radius: 18px;
-    border-bottom-left-radius: 4px; /* Classic speech bubble tweak */
-    max-width: 80%;
-    align-self: flex-start;
-    font-size: 15px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    color: #222;
-    animation: bubbleSpawn 0.2s ease-out;
-}
-
-.chat-msg span.name {
-    font-weight: bold;
-    margin-right: 8px;
-    text-transform: capitalize;
-}
-
-/* System message logs like ejections */
-.chat-msg:has(span[style*="system"]) {
-    align-self: center;
-    background: #3a4a52;
-    color: #fff;
-    border-radius: 10px;
-    font-style: italic;
-}
-
-#voting-buttons {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-    justify-content: center;
-}
-
-.vote-btn {
-    padding: 12px 24px;
-    font-size: 16px;
-    font-family: 'Varela Round', sans-serif;
-    font-weight: bold;
-    color: white;
-    background: #3a4a52;
-    border: 4px solid #1c2529;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: 0.1s ease;
-}
-
-.vote-btn:hover {
-    background: #4d626d;
-    transform: translateY(-2px);
-}
-
-.skip-btn {
-    background: #677983;
-}
-
-/* --- ELECTRICAL/TASK MODAL SYSTEM --- */
-#task-layer {
-    position: absolute;
-    top: 0; left: 0; width: 100%; height: 100%;
-    background: rgba(0, 0, 0, 0.85);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 15;
-}
-
-#task-screen {
-    background: #2c3e50;
-    border: 10px solid #1a252f;
-    border-radius: 16px;
-    padding: 35px;
-    text-align: center;
-    color: #ecf0f1;
-    box-shadow: 0 12px 35px rgba(0,0,0,0.9);
-    width: 450px;
-}
-
-#switches-container {
-    display: flex;
-    gap: 16px;
-    justify-content: center;
-    margin: 35px 0;
-    background: #111;
-    padding: 20px;
-    border-radius: 10px;
-    box-shadow: inset 0 0 15px rgba(0,0,0,0.7);
-}
-
-.switch {
-    width: 54px;
-    height: 130px;
-    background: #222;
-    border: 4px solid #444;
-    border-radius: 8px;
-    cursor: pointer;
-    position: relative;
-    box-shadow: inset 0 0 10px rgba(0,0,0,0.8);
-}
-
-/* The breaker handle handle layout */
-.switch::after {
-    content: '';
-    position: absolute;
-    bottom: 8px;
-    left: 4px;
-    width: 38px;
-    height: 50px;
-    background: #e74c3c;
-    border-radius: 4px;
-    transition: all 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    box-shadow: 0 4px 0 #962d22, inset 0 2px 4px rgba(255,255,255,0.3);
-}
-
-/* Triggered class state when breaker is thrown UP */
-.switch.on::after {
-    bottom: 64px;
-    background: #2ecc71;
-    box-shadow: 0 -4px 0 #1b7e43, inset 0 2px 4px rgba(255,255,255,0.4);
-}
-
-/* --- FULLSCREEN VICTORY/DEFEAT SPLASH SCREEN --- */
-#end-screen {
-    position: absolute;
-    top: 0; left: 0; width: 100%; height: 100%;
-    background: black;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 20;
-    animation: fadeReveal 0.5s ease-in-out;
-}
-
-#end-text {
-    font-size: 65px;
-    text-transform: uppercase;
-    letter-spacing: 6px;
-    text-shadow: 0 0 20px rgba(255,255,255,0.2);
-}
-
-/* --- BASIC ENGINE INTERACTION KEYFRAMES --- */
-@keyframes bubbleSpawn {
-    from { transform: scale(0.9); opacity: 0; }
-    to { transform: scale(1); opacity: 1; }
-}
-
-@keyframes fadeReveal {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
+.sabo-icon.lights-icon { background: #e67e22; }
+.sabo-icon.door-icon { background: #e74c3c; font-size: 20px; }
+.sabo-icon.cooldown { filter: grayscale(100%); opacity: 0.5; pointer-events: none; }
