@@ -1,40 +1,36 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-// Load your specific sprites
-const standImg = new Image(); standImg.src = 'Stand_mogus.png';
-const walkImg = new Image();  walkImg.src = 'walk_mogus_1.png';
+const spriteSheet = new Image();
+spriteSheet.src = 'crew_spritesheet.png';
 
-// Define entities with a state
-const player = { x: 400, y: 300, isMoving: false };
-const bots = [
-    { x: 100, y: 100, isMoving: true, vx: 1, vy: 1 },
-    { x: 600, y: 400, isMoving: true, vx: -1, vy: 2 }
-];
+// Configuration: Adjust these to match your specific image grid
+const frameWidth = 64;  // Width of one character frame
+const frameHeight = 64; // Height of one character frame
+let frameIndex = 0;     // Current animation frame
+
+// Map your animations to grid coordinates (X, Y)
+const animations = {
+    stand: { x: 0, y: 0 },
+    walk:  { x: 1, y: 0 } 
+};
 
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw all characters
-    [player, ...bots].forEach(entity => {
-        const sprite = entity.isMoving ? walkImg : standImg;
-        ctx.drawImage(sprite, entity.x, entity.y, 50, 50);
-    });
+    // Get current animation coordinates
+    const anim = animations.stand;
 
-    // Simple movement update
-    bots.forEach(b => {
-        b.x += b.vx;
-        b.y += b.vy;
-        // Bounce
-        if(b.x < 0 || b.x > 750) b.vx *= -1;
-        if(b.y < 0 || b.y > 550) b.vy *= -1;
-    });
+    // Draw the specific frame
+    ctx.drawImage(
+        spriteSheet,
+        anim.x * frameWidth, anim.y * frameHeight, // Source X, Y (where to cut)
+        frameWidth, frameHeight,                   // Width/Height to cut
+        400, 300,                                  // Dest X, Y (where to draw)
+        frameWidth, frameHeight                    // Size on screen
+    );
 
     requestAnimationFrame(draw);
 }
 
-// Start only when images are ready
-let loadedImages = 0;
-const checkLoad = () => { if(++loadedImages === 2) draw(); };
-standImg.onload = checkLoad;
-walkImg.onload = checkLoad;
+spriteSheet.onload = () => draw();
