@@ -1,9 +1,6 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-
-// Fullscreen Setup
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+canvas.width = window.innerWidth; canvas.height = window.innerHeight;
 window.onresize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
 
 const standImg = new Image(); standImg.src = 'Stand_mogus.png';
@@ -11,202 +8,248 @@ const walkImg = new Image();  walkImg.src = 'walk_mogus_1.png';
 const deadImg = new Image();  deadImg.src = 'Death_mogus.png';
 
 const drawSize = 60; 
-const WORLD_SIZE = 2000; // The map is much bigger now!
-
 let gamePaused = false; 
 let gameWon = false; 
 
+// Sabotage System
+let lightsOut = false;
+let sabotageCooldown = false;
+let visionRadius = 500; 
+
+// --- MAP & COLLISION SYSTEM ---
+const WORLD_W = 2000;
+const WORLD_H = 1500;
+const walls = [
+    {x: 0, y: 0, w: WORLD_W, h: 50}, // Top Wall
+    {x: 0, y: WORLD_H-50, w: WORLD_W, h: 50}, // Bottom Wall
+    {x: 0, y: 0, w: 50, h: WORLD_H}, // Left Wall
+    {x: WORLD_W-50, y: 0, w: 50, h: WORLD_H}, // Right Wall
+    {x: 400, y: 0, w: 100, h: 600}, // Hallway block 1
+    {x: 400, y: 900, w: 100, h: 600}, // Hallway block 2
+    {x: 1000, y: 300, w: 600, h: 100}, // Room divider
+    {x: 1000, y: 1000, w: 600, h: 100} // Room divider
+];
+
+function checkCollision(nx, ny, size) {
+    for (let w of walls) {
+        if (nx < w.x + w.w && nx + size > w.x && ny < w.y + w.h && ny + size > w.y) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// --- CREWMATE ENGINE ---
 class Crewmate {
     constructor(x, y, isPlayer, colorName) {
         this.x = x; this.y = y;
         this.isPlayer = isPlayer; this.colorName = colorName;
         this.isDead = false; this.isEjected = false; this.isCleanedUp = false; 
+        this.killer = null; // Tracks who killed them
         
         this.vx = isPlayer ? 0 : (Math.random() > 0.5 ? 2.5 : -2.5);
         this.vy = isPlayer ? 0 : (Math.random() > 0.5 ? 2.5 : -2.5);
-        
         this.isMoving = false; this.animTimer = 0; this.showWalkFrame = false;
+
+        // Bot Memory: Remembers seeing two players together
+        this.memory = {}; 
     }
 
     update() {
         if (this.isDead || this.isEjected || gamePaused || gameWon) return; 
         this.isMoving = false;
 
+        let nx = this.x; let ny = this.y;
+
         if (this.isPlayer) {
-            if (keys['KeyW']) { this.y -= 5; this.isMoving = true; }
-            if (keys['KeyS']) { this.y += 5; this.isMoving = true; }
-            if (keys['KeyA']) { this.x -= 5; this.isMoving = true; }
-            if (keys['KeyD']) { this.x += 5; this.isMoving = true; }
+            if (keys['KeyW']) { ny -= 5; this.isMoving = true; }
+            if (keys['KeyS']) { ny += 5; this.isMoving = true; }
+            if (keys['KeyA']) { nx -= 5; this.isMoving = true; }
+            if (keys['KeyD']) { nx += 5; this.isMoving = true; }
         } else {
-            this.x += this.vx; this.y += this.vy; this.isMoving = true; 
-            
-            // Wall bouncing against the new world bounds
-            if (this.x < 0 || this.x > WORLD_SIZE - drawSize) this.vx *= -1;
-            if (this.y < 0 || this.y > WORLD_SIZE - drawSize) this.vy *= -1;
+            nx += this.vx; ny += this.vy; this.isMoving = true; 
+            if (checkCollision(nx, ny, drawSize)) {
+                this.vx *= -1; this.vy *= -1; // Bounce
+                nx = this.x; ny = this.y; // Abort move
+            }
         }
 
-        // Keep player in bounds
-        if (this.x < 0) this.x = 0;
-        if (this.x > WORLD_SIZE - drawSize) this.x = WORLD_SIZE - drawSize;
-        if (this.y < 0) this.y = 0;
-        if (this.y > WORLD_SIZE - drawSize) this.y = WORLD_SIZE - drawSize;
+        if (!checkCollision(nx, ny, drawSize)) {
+            this.x = nx; this.y = ny;
+        }
 
         if (this.isMoving) {
             this.animTimer++;
-            if (this.animTimer > 8) {
-                this.showWalkFrame = !this.showWalkFrame;
-                this.animTimer = 0;
-            }
-        } else {
-            this.showWalkFrame = false;
+            if (this.animTimer > 8) { this.showWalkFrame = !this.showWalkFrame; this.animTimer = 0; }
+        } else { this.showWalkFrame = false; }
+
+        // Update Bot Memory (Sight)
+        if (!this.isPlayer && !lightsOut) {
+            [player, ...bots].forEach(other => {
+                if (other !== this && !other.isDead && !other.isEjected) {
+                    if (Math.hypot(this.x - other.x, this.y - other.y) < 400) {
+                        this.memory[other.colorName] = Date.now(); // Log last seen time
+                    }
+                }
+            });
         }
     }
 
     draw(ctx) {
         if (this.isEjected) return; 
-        
-        // Draw Name Tag
-        ctx.fillStyle = "white";
-        ctx.font = "14px 'Varela Round'";
-        ctx.textAlign = "center";
+        ctx.fillStyle = "white"; ctx.font = "14px 'Varela Round'"; ctx.textAlign = "center";
         ctx.fillText(this.colorName, this.x + drawSize/2, this.y - 10);
 
-        if (this.isDead) {
-            if (!this.isCleanedUp) ctx.drawImage(deadImg, this.x, this.y, drawSize, drawSize);
-        } else {
-            const currentImg = this.showWalkFrame ? walkImg : standImg;
-            ctx.drawImage(currentImg, this.x, this.y, drawSize, drawSize);
+        if (this.isDead && !this.isCleanedUp) {
+            ctx.drawImage(deadImg, this.x, this.y, drawSize, drawSize);
+        } else if (!this.isDead) {
+            ctx.drawImage(this.showWalkFrame ? walkImg : standImg, this.x, this.y, drawSize, drawSize);
         }
     }
 }
 
-const player = new Crewmate(WORLD_SIZE/2, WORLD_SIZE/2, true, 'Red');
+const player = new Crewmate(200, 200, true, 'Red');
 const bots = [
-    new Crewmate(100, 100, false, 'Blue'),
-    new Crewmate(600, 100, false, 'Green'),
-    new Crewmate(1200, 800, false, 'Yellow'),
-    new Crewmate(1800, 1500, false, 'Pink'),
-    new Crewmate(500, 1800, false, 'Cyan'),
-    new Crewmate(1500, 300, false, 'Black')
+    new Crewmate(200, 800, false, 'Blue'), new Crewmate(1200, 150, false, 'Green'),
+    new Crewmate(1600, 500, false, 'Yellow'), new Crewmate(800, 1200, false, 'Pink'),
+    new Crewmate(1600, 1200, false, 'Cyan'), new Crewmate(100, 1300, false, 'Black'),
+    new Crewmate(800, 200, false, 'White'), new Crewmate(1500, 800, false, 'Orange')
 ];
 
-function resetMatch() {
-    gameWon = false; gamePaused = false;
-    document.getElementById('end-screen').style.display = 'none';
-    
-    player.x = WORLD_SIZE/2; player.y = WORLD_SIZE/2; 
-    player.isDead = false; player.isEjected = false;
-    
-    bots.forEach(bot => {
-        bot.isDead = false; bot.isEjected = false; bot.isCleanedUp = false;
-        bot.x = Math.random() * (WORLD_SIZE - drawSize);
-        bot.y = Math.random() * (WORLD_SIZE - drawSize);
-    });
+// --- CHAT & MEETING SYSTEM ---
+function addChatMsg(author, text) {
+    const box = document.getElementById('chat-box');
+    let msg = document.createElement('div');
+    msg.className = 'chat-msg';
+    msg.innerHTML = `<span class="name" style="color: ${author.toLowerCase()}">${author}:</span> ${text}`;
+    box.appendChild(msg);
+    box.scrollTop = box.scrollHeight; // Auto-scroll
 }
 
 function triggerReport(reporter, deadBody) {
     if (gamePaused || gameWon) return; 
-    gamePaused = true;
+    gamePaused = true; lightsOut = false; visionRadius = 500; // Reset lights
+    document.getElementById('sabotage-btn').classList.remove('cooldown');
 
-    let allEntities = [player, ...bots];
-    let alivePlayers = allEntities.filter(c => !c.isDead && !c.isEjected);
+    let alivePlayers = [player, ...bots].filter(c => !c.isDead && !c.isEjected);
+    let suspect = alivePlayers.find(p => p !== reporter && Math.hypot(p.x - deadBody.x, p.y - deadBody.y) < 400);
+    if (!suspect) suspect = { colorName: "Nobody" }; 
 
-    let suspect = null;
-    let minDistance = Infinity;
+    document.getElementById('voting-title').innerText = "Emergency Meeting";
+    document.getElementById('chat-box').innerHTML = ''; // Clear chat
+    document.getElementById('voting-buttons').innerHTML = ''; 
+    document.getElementById('voting-layer').style.display = 'flex'; 
 
+    let delay = 1000;
+    
+    // Self-Report Logic
+    let selfReportAccusers = 0;
+    let isSelfReport = (reporter === player && deadBody.killer === player);
+
+    if (isSelfReport) {
+        // Check if bots remember seeing player and victim together recently
+        alivePlayers.forEach(b => {
+            if (!b.isPlayer && b.memory[player.colorName] > Date.now() - 15000 && b.memory[deadBody.colorName] > Date.now() - 15000) {
+                selfReportAccusers++;
+            }
+        });
+    }
+
+    // Sequence the chat
+    setTimeout(() => { addChatMsg(reporter.colorName, `Where? I found a body.`); }, delay);
+    delay += 1500;
+
+    if (isSelfReport && selfReportAccusers > 0) {
+        // Bots caught you self-reporting
+        alivePlayers.forEach(b => {
+            if (!b.isPlayer && b.memory[player.colorName] > Date.now() - 15000) {
+                setTimeout(() => { addChatMsg(b.colorName, `SELF REPORT! I saw Red with them!`); }, delay);
+                delay += 800;
+            }
+        });
+    } else {
+        // Normal Bot Accusations
+        alivePlayers.forEach(b => {
+            if (!b.isPlayer && suspect.colorName !== "Nobody" && suspect.colorName !== b.colorName) {
+                setTimeout(() => { 
+                    addChatMsg(b.colorName, `I saw ${suspect.colorName} go with ${deadBody.colorName} and now ${deadBody.colorName} is dead, and ${suspect.colorName} is running! ${suspect.colorName} is sus!`); 
+                }, delay);
+                delay += 1000;
+            }
+        });
+    }
+
+    // Show Voting Buttons after chat
+    setTimeout(() => {
+        const btnContainer = document.getElementById('voting-buttons');
+        alivePlayers.forEach(p => {
+            let btn = document.createElement('button');
+            btn.className = 'vote-btn'; btn.innerText = `Vote ${p.colorName}`;
+            btn.onclick = () => castVote(p, suspect, alivePlayers, selfReportAccusers);
+            btnContainer.appendChild(btn);
+        });
+        let skipBtn = document.createElement('button');
+        skipBtn.className = 'vote-btn skip-btn'; skipBtn.innerText = "Skip Vote";
+        skipBtn.onclick = () => castVote(null, suspect, alivePlayers, selfReportAccusers);
+        btnContainer.appendChild(skipBtn);
+    }, delay);
+}
+
+function castVote(playerChoice, suspect, alivePlayers, selfReportAccusers) {
+    let votes = { "Skip": 0 };
+    alivePlayers.forEach(p => votes[p.colorName] = 0);
+    if (playerChoice) votes[playerChoice.colorName]++; else votes["Skip"]++;
+
+    // AI Voting Logic
     alivePlayers.forEach(p => {
-        if (p !== reporter) { 
-            let dist = Math.hypot(p.x - deadBody.x, p.y - deadBody.y);
-            if (dist < minDistance) { minDistance = dist; suspect = p; }
+        if (!p.isPlayer) {
+            if (selfReportAccusers >= 3) {
+                votes['Red']++; // They dogpile you if caught self reporting
+            } else if (suspect.colorName !== "Nobody") {
+                votes[suspect.colorName]++;
+            } else {
+                votes["Skip"]++;
+            }
         }
     });
 
-    if (!suspect) suspect = { colorName: "Nobody" }; 
-
-    const votingLayer = document.getElementById('voting-layer');
-    const title = document.getElementById('voting-title');
-    const btnContainer = document.getElementById('voting-buttons');
-    btnContainer.innerHTML = ''; 
-
-    title.innerText = `${reporter.colorName} found a body!\n"I saw ${suspect.colorName} go with ${deadBody.colorName} and now ${deadBody.colorName} is dead! ${suspect.colorName} is sus!"`;
-
-    alivePlayers.forEach(p => {
-        let btn = document.createElement('button');
-        btn.className = 'vote-btn';
-        btn.innerText = `Vote ${p.colorName}`;
-        btn.onclick = () => castVote(p, suspect, alivePlayers);
-        btnContainer.appendChild(btn);
-    });
-
-    let skipBtn = document.createElement('button');
-    skipBtn.className = 'vote-btn skip-btn';
-    skipBtn.innerText = "Skip Vote";
-    skipBtn.onclick = () => castVote(null, suspect, alivePlayers);
-    btnContainer.appendChild(skipBtn);
-
-    votingLayer.style.display = 'flex'; 
-}
-
-function castVote(playerChoice, suspect, alivePlayers) {
-    let votes = { "Skip": 0 };
-    alivePlayers.forEach(p => votes[p.colorName] = 0);
-
-    if (playerChoice) votes[playerChoice.colorName]++;
-    else votes["Skip"]++;
-
-    alivePlayers.forEach(p => {
-        if (!p.isPlayer && suspect.colorName !== "Nobody") votes[suspect.colorName]++;
-    });
-
-    let highestVotes = -1; let ejectedName = null; let tie = false;
+    let maxVotes = -1; let ejectedName = null; let tie = false;
     for (let name in votes) {
-        if (votes[name] > highestVotes) {
-            highestVotes = votes[name]; ejectedName = name; tie = false;
-        } else if (votes[name] === highestVotes) tie = true;
+        if (votes[name] > maxVotes) { maxVotes = votes[name]; ejectedName = name; tie = false; } 
+        else if (votes[name] === maxVotes) tie = true;
     }
 
-    const title = document.getElementById('voting-title');
     document.getElementById('voting-buttons').innerHTML = ''; 
-
-    if (tie || ejectedName === "Skip") {
-        title.innerText = `Votes tied. Nobody was ejected.`;
-        ejectedName = null;
-    } else {
-        title.innerText = `${ejectedName} was ejected.`;
-    }
+    addChatMsg("SYSTEM", tie || ejectedName === "Skip" ? `Votes tied. Nobody ejected.` : `${ejectedName} was ejected.`);
 
     setTimeout(() => {
         document.getElementById('voting-layer').style.display = 'none';
-
         if (ejectedName) {
             let ejectedObj = [player, ...bots].find(p => p.colorName === ejectedName);
             if (ejectedObj) ejectedObj.isEjected = true;
         }
-
         [player, ...bots].forEach(c => { if (c.isDead) c.isCleanedUp = true; });
         gamePaused = false; 
         checkWinCondition(); 
     }, 3000);
 }
 
-function triggerEnd(message, color) {
-    gameWon = true;
-    const endScreen = document.getElementById('end-screen');
-    const endText = document.getElementById('end-text');
-    endText.innerText = message;
-    endText.style.color = color;
-    endScreen.style.display = 'flex';
-    setTimeout(resetMatch, 4000);
-}
-
 function checkWinCondition() {
     if (gameWon) return;
     if (player.isEjected) { triggerEnd("CREWMATES WIN", "#3498db"); return; }
-
     let aliveCount = bots.filter(b => !b.isDead && !b.isEjected).length + (player.isDead || player.isEjected ? 0 : 1);
     if (aliveCount <= 2 && !player.isEjected) { triggerEnd("IMPOSTOR WINS", "#ff4747"); }
 }
 
+function triggerEnd(message, color) {
+    gameWon = true;
+    document.getElementById('end-text').innerText = message;
+    document.getElementById('end-text').style.color = color;
+    document.getElementById('end-screen').style.display = 'flex';
+    setTimeout(() => location.reload(), 4000); // Quick hard reset
+}
+
+// --- INPUTS & ACTIONS ---
 const keys = {};
 window.addEventListener('keyup', (e) => keys[e.code] = false);
 window.addEventListener('keydown', (e) => {
@@ -216,84 +259,69 @@ window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyE') {
         for (let bot of bots) {
             if (!bot.isDead && !bot.isEjected && Math.hypot(bot.x - player.x, bot.y - player.y) < 90) { 
-                bot.isDead = true; checkWinCondition(); break; 
+                bot.isDead = true; bot.killer = player; checkWinCondition(); break; 
             }
         }
     }
 
     if (e.code === 'KeyR') {
-        let allBodies = bots.filter(c => c.isDead && !c.isCleanedUp);
-        for (let body of allBodies) {
-            if (Math.hypot(player.x - body.x, player.y - body.y) < 120) { 
-                triggerReport(player, body); break;
-            }
+        let bodies = bots.filter(c => c.isDead && !c.isCleanedUp);
+        for (let b of bodies) {
+            if (Math.hypot(player.x - b.x, player.y - b.y) < 120) { triggerReport(player, b); break; }
         }
+    }
+
+    // Sabotage
+    if (e.code === 'KeyF' && !sabotageCooldown) {
+        lightsOut = true; visionRadius = 150; sabotageCooldown = true;
+        document.getElementById('sabotage-btn').classList.add('cooldown');
+        setTimeout(() => { lightsOut = false; visionRadius = 500; }, 10000); // Fix lights after 10s
+        setTimeout(() => { document.getElementById('sabotage-btn').classList.remove('cooldown'); sabotageCooldown = false; }, 30000); // 30s cooldown
     }
 });
 
-function drawGrid() {
-    ctx.strokeStyle = '#222';
-    ctx.lineWidth = 2;
-    for(let i = 0; i < WORLD_SIZE; i += 100) {
-        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, WORLD_SIZE); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(WORLD_SIZE, i); ctx.stroke();
-    }
-}
-
+// --- RENDER ENGINE ---
 function gameLoop() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    // --- HUD BUTTON LOGIC ---
     let canKill = bots.some(b => !b.isDead && !b.isEjected && Math.hypot(b.x - player.x, b.y - player.y) < 90);
     let canReport = bots.some(b => b.isDead && !b.isCleanedUp && Math.hypot(player.x - b.x, player.y - b.y) < 120);
-    
     document.getElementById('kill-btn').className = canKill && !gamePaused ? 'action-btn active-kill' : 'action-btn';
     document.getElementById('report-btn').className = canReport && !gamePaused ? 'action-btn active-report' : 'action-btn';
 
-    if (!gamePaused && !gameWon) {
+    // Bot Auto-Report (Bots are blind in the dark!)
+    if (!gamePaused && !gameWon && !lightsOut) {
         bots.forEach(bot => {
             if (!bot.isDead && !bot.isEjected) {
-                let allBodies = [player, ...bots].filter(c => c.isDead && !c.isCleanedUp);
-                allBodies.forEach(body => {
-                    if (Math.hypot(bot.x - body.x, bot.y - body.y) < 70) triggerReport(bot, body);
+                bots.filter(c => c.isDead && !c.isCleanedUp).forEach(body => {
+                    if (Math.hypot(bot.x - body.x, bot.y - body.y) < 100) triggerReport(bot, body);
                 });
             }
         });
     }
 
-    // --- CAMERA SYSTEM ---
     ctx.save();
-    let camX = canvas.width / 2 - player.x - drawSize / 2;
-    let camY = canvas.height / 2 - player.y - drawSize / 2;
-    ctx.translate(camX, camY);
+    ctx.translate(canvas.width / 2 - player.x - drawSize / 2, canvas.height / 2 - player.y - drawSize / 2);
 
-    // Draw the Map
-    ctx.fillStyle = "#1a1a1a";
-    ctx.fillRect(0, 0, WORLD_SIZE, WORLD_SIZE);
-    drawGrid();
+    // Draw Floor & Walls
+    ctx.fillStyle = "#2a2a2a"; ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+    ctx.fillStyle = "#4a5a6a"; walls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
 
     // Draw Entities
     let allEntities = [...bots, player];
-    allEntities.forEach(entity => { if (entity.isDead) { entity.update(); entity.draw(ctx); } });
-    allEntities.forEach(entity => { if (!entity.isDead) { entity.update(); entity.draw(ctx); } });
+    allEntities.forEach(e => { if (e.isDead) { e.update(); e.draw(ctx); } });
+    allEntities.forEach(e => { if (!e.isDead) { e.update(); e.draw(ctx); } });
 
-    ctx.restore(); // Stop camera movement
+    ctx.restore();
 
-    // --- FOG OF WAR (Shadows) ---
+    // Fog of War / Lights Out
     if (!gamePaused && !gameWon) {
-        let grad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, 100, canvas.width/2, canvas.height/2, 500);
-        grad.addColorStop(0, 'rgba(0,0,0,0)');
-        grad.addColorStop(1, 'rgba(0,0,0,0.98)');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        let grad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, visionRadius * 0.3, canvas.width/2, canvas.height/2, visionRadius);
+        grad.addColorStop(0, 'rgba(0,0,0,0)'); grad.addColorStop(1, 'rgba(0,0,0,0.98)');
+        ctx.fillStyle = grad; ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
     requestAnimationFrame(gameLoop);
 }
-
-// Error logging
-standImg.onerror = () => console.error("Missing: Stand_mogus.png");
-walkImg.onerror = () => console.error("Missing: walk_mogus_1.png");
-deadImg.onerror = () => console.error("Missing: Death_mogus.png");
 
 gameLoop();
