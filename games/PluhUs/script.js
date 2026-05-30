@@ -29,22 +29,27 @@ const walls = [
     {x: WORLD_W-50, y: 0, w: 50, h: WORLD_H}, 
     
     // Left Hallway (Reactor)
-    {x: 400, y: 0, w: 100, h: 600}, 
-    {x: 400, y: 900, w: 100, h: 600}, 
+    {x: 400, y: 0, w: 100, h: 550}, 
+    {x: 400, y: 850, w: 100, h: 650}, 
     
     // Right Room (Admin)
     {x: 1000, y: 300, w: 600, h: 100}, 
     {x: 1000, y: 1000, w: 600, h: 100}, 
-    {x: 1000, y: 400, w: 100, h: 200}, 
-    {x: 1000, y: 800, w: 100, h: 200}, 
+    {x: 1000, y: 400, w: 100, h: 150}, 
+    {x: 1000, y: 850, w: 100, h: 150}, 
+
+    // Top Middle (Electrical)
+    {x: 800, y: 0, w: 100, h: 300},
+    {x: 1100, y: 0, w: 100, h: 300}
 ];
 
 const doors = [
-    { id: 'door-1', x: 400, y: 600, w: 100, h: 300, isClosed: false, closeTimer: 0, cooldown: 0 },
-    { id: 'door-2', x: 1000, y: 600, w: 100, h: 200, isClosed: false, closeTimer: 0, cooldown: 0 }
+    { id: 'door-1', x: 400, y: 550, w: 100, h: 300, isClosed: false, closeTimer: 0, cooldown: 0 }, 
+    { id: 'door-2', x: 1000, y: 550, w: 100, h: 300, isClosed: false, closeTimer: 0, cooldown: 0 }, 
+    { id: 'door-3', x: 900, y: 250, w: 200, h: 50, isClosed: false, closeTimer: 0, cooldown: 0 }  
 ];
 
-const elecPanel = { x: 900, y: 50, w: 100, h: 60 };
+const elecPanel = { x: 950, y: 50, w: 100, h: 60 };
 
 function checkCollision(nx, ny, size) {
     for (let w of walls) {
@@ -56,19 +61,19 @@ function checkCollision(nx, ny, size) {
     return false;
 }
 
-// --- AI PATHFINDING GRAPH ---
+// --- AI PATHFINDING GRAPH (ORTHOGONAL FIX) ---
 const waypoints = [
-    { id: 0, x: 200, y: 300, edges: [2] },         
-    { id: 1, x: 200, y: 1200, edges: [2] },        
-    { id: 2, x: 300, y: 700, edges: [0, 1, 3] },   
-    { id: 3, x: 550, y: 700, edges: [2, 4, 10] },  
-    { id: 4, x: 800, y: 700, edges: [3, 5, 6, 10] }, 
-    { id: 5, x: 920, y: 200, edges: [4] },         
-    { id: 6, x: 950, y: 700, edges: [4, 7] },      
-    { id: 7, x: 1150, y: 700, edges: [6, 8, 9] },  
-    { id: 8, x: 1450, y: 500, edges: [7] },        
-    { id: 9, x: 1450, y: 900, edges: [7] },        
-    { id: 10, x: 800, y: 1300, edges: [3, 4] }     
+    { id: 0, x: 250, y: 300, edges: [2] },         // Left Top
+    { id: 1, x: 250, y: 1200, edges: [2] },        // Left Bot
+    { id: 2, x: 250, y: 700, edges: [0, 1, 3] },   // Left Center
+    { id: 3, x: 550, y: 700, edges: [2, 4] },      // Mid-Left Hall
+    { id: 4, x: 800, y: 700, edges: [3, 6, 10] },  // Center Hall
+    { id: 5, x: 1000, y: 150, edges: [6] },        // Electrical Box
+    { id: 6, x: 1000, y: 700, edges: [4, 5, 7] },  // Outside Admin / Below Elec
+    { id: 7, x: 1150, y: 700, edges: [6, 8, 9] },  // Inside Admin
+    { id: 8, x: 1450, y: 500, edges: [7] },        // Admin Top
+    { id: 9, x: 1450, y: 900, edges: [7] },        // Admin Bot
+    { id: 10, x: 800, y: 1300, edges: [4] }        // Bottom Hall
 ];
 
 function getClosestNode(x, y) {
@@ -154,14 +159,14 @@ class Crewmate {
                 this.isMoving = false;
             } else if (this.targetNode) {
                 let isFinalNode = (this.path.length === 0);
-                
                 let targetX = this.targetNode.x;
                 let targetY = this.targetNode.y;
                 
                 if (isFinalNode) {
                     if (!this.finalOffsetX) {
-                        this.finalOffsetX = (Math.random() - 0.5) * 150; 
-                        this.finalOffsetY = (Math.random() - 0.5) * 150;
+                        // Reduced wander variance to prevent them from pushing into walls
+                        this.finalOffsetX = (Math.random() - 0.5) * 60; 
+                        this.finalOffsetY = (Math.random() - 0.5) * 60;
                     }
                     targetX += this.finalOffsetX;
                     targetY += this.finalOffsetY;
@@ -190,13 +195,15 @@ class Crewmate {
                     if (!checkCollision(nx, ny, drawSize)) {
                         this.x = nx; this.y = ny; this.isMoving = true;
                     } else {
+                        // Wall sliding
                         if (!checkCollision(nx, this.y, drawSize)) {
                             this.x = nx; this.isMoving = true;
                         } else if (!checkCollision(this.x, ny, drawSize)) {
                             this.y = ny; this.isMoving = true;
                         } else {
                             this.isMoving = false; 
-                            if (Math.random() < 0.05) this.targetNode = null; 
+                            // Reduced chance to abandon path from 5% to 1% to make them more persistent at doors
+                            if (Math.random() < 0.01) this.targetNode = null; 
                         }
                     }
                 }
@@ -277,7 +284,6 @@ window.triggerSabotage = function(type) {
     }
 }
 
-// --- MINI-GAME LOGIC ---
 let switchStates = [false, false, false, false, false];
 
 window.openLightsTask = function() {
@@ -299,9 +305,7 @@ window.toggleSwitch = function(el) {
     
     if (switchStates.every(s => s === true)) {
         setTimeout(() => {
-            lightsOut = false;
-            visionRadius = 500;
-            closeTask();
+            lightsOut = false; visionRadius = 500; closeTask();
         }, 500);
     }
 }
@@ -316,13 +320,12 @@ function addChatMsg(author, text) {
     box.scrollTop = box.scrollHeight; 
 }
 
-// NEW: Send Player Chat
 window.sendPlayerChat = function() {
     if (player.isDead || player.isEjected) return; 
     const select = document.getElementById('quick-chat-select');
     if (select.value) {
         addChatMsg(player.colorName, select.value);
-        select.selectedIndex = 0; // Reset dropdown to default
+        select.selectedIndex = 0; 
     }
 }
 
@@ -343,7 +346,6 @@ function triggerReport(reporter, deadBody) {
     document.getElementById('voting-buttons').innerHTML = ''; 
     document.getElementById('voting-layer').style.display = 'flex'; 
 
-    // Dynamically populate Quick Chat accusation options
     const accuseGroup = document.getElementById('qc-accuse');
     accuseGroup.innerHTML = '';
     alivePlayers.forEach(p => {
@@ -400,6 +402,22 @@ function triggerReport(reporter, deadBody) {
             }
         });
     } else {
+        if (suspect.colorName === "Nobody") {
+            let randomAccuser = alivePlayers.find(p => !p.isPlayer && p !== reporter);
+            if (randomAccuser && Math.random() > 0.4) {
+                let potentialTargets = alivePlayers.filter(p => p !== randomAccuser && p !== reporter);
+                if (potentialTargets.length > 0) {
+                    let randomTarget = potentialTargets[Math.floor(Math.random() * potentialTargets.length)];
+                    setTimeout(() => {
+                        addChatMsg(randomAccuser.colorName, `I didn't see the body, but ${randomTarget.colorName} is faking tasks.`);
+                        suspect = randomTarget; 
+                        mainAccuser = randomAccuser.colorName;
+                    }, delay);
+                    delay += 1000;
+                }
+            }
+        }
+
         alivePlayers.forEach(b => {
             if (!b.isPlayer && suspect.colorName !== "Nobody" && suspect.colorName !== b.colorName) {
                 if (!mainAccuser) {
@@ -631,8 +649,13 @@ function gameLoop() {
             ctx.strokeStyle = "#111"; ctx.lineWidth = 5;
             ctx.strokeRect(d.x, d.y, d.w, d.h);
             ctx.beginPath();
-            ctx.moveTo(d.x, d.y + d.h/2);
-            ctx.lineTo(d.x + d.w, d.y + d.h/2);
+            if (d.w > d.h) {
+                ctx.moveTo(d.x + d.w/2, d.y);
+                ctx.lineTo(d.x + d.w/2, d.y + d.h);
+            } else {
+                ctx.moveTo(d.x, d.y + d.h/2);
+                ctx.lineTo(d.x + d.w, d.y + d.h/2);
+            }
             ctx.stroke();
         }
     });
