@@ -47,7 +47,6 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-// --- TIMERS & COOLDOWNS ---
 let killCooldown = 15; 
 let globalSabotageCooldown = 0; 
 let lastTick = Date.now();
@@ -55,32 +54,33 @@ let lightsOut = false;
 let visionRadius = 500; 
 let isSabotageMapOpen = false;
 
-// --- MAP & VENTS (UPDATED 1:1 WITH SKETCH) ---
+// --- MAP, WALLS & 4 DOORS ---
 const WORLD_W = 2000;
 const WORLD_H = 1500;
 const walls = [
     {x: 0, y: 0, w: WORLD_W, h: 50}, {x: 0, y: WORLD_H-50, w: WORLD_W, h: 50}, 
     {x: 0, y: 0, w: 50, h: WORLD_H}, {x: WORLD_W-50, y: 0, w: 50, h: WORLD_H}, 
-    {x: 400, y: 0, w: 100, h: 550}, {x: 400, y: 850, w: 100, h: 650}, 
-    {x: 1000, y: 300, w: 600, h: 100}, {x: 1000, y: 1000, w: 600, h: 100}, 
-    {x: 1000, y: 400, w: 100, h: 150}, {x: 1000, y: 850, w: 100, h: 150}, 
-    {x: 800, y: 0, w: 100, h: 300}, {x: 1100, y: 0, w: 100, h: 300}
+    {x: 400, y: 0, w: 100, h: 550}, {x: 400, y: 850, w: 100, h: 650}, // Reactor
+    {x: 1000, y: 300, w: 600, h: 100}, {x: 1000, y: 1000, w: 600, h: 100}, // Admin Top/Bot
+    {x: 1000, y: 400, w: 100, h: 150}, {x: 1000, y: 850, w: 100, h: 150}, // Admin Left
+    {x: 800, y: 0, w: 100, h: 300}, {x: 1100, y: 0, w: 100, h: 300}, // Elec
+    {x: 800, y: 1200, w: 100, h: 300}, {x: 1100, y: 1200, w: 100, h: 300} // Storage (NEW)
 ];
 
 const doors = [
-    { id: 'door-1', x: 400, y: 550, w: 100, h: 300, isClosed: false, closeTimer: 0, cooldown: 0 }, 
-    { id: 'door-2', x: 1000, y: 550, w: 100, h: 300, isClosed: false, closeTimer: 0, cooldown: 0 }, 
-    { id: 'door-3', x: 900, y: 250, w: 200, h: 50, isClosed: false, closeTimer: 0, cooldown: 0 }  
+    { id: 'door-1', x: 400, y: 550, w: 100, h: 300, isClosed: false, closeTimer: 0, cooldown: 0 }, // Reactor
+    { id: 'door-2', x: 1000, y: 550, w: 100, h: 300, isClosed: false, closeTimer: 0, cooldown: 0 }, // Admin
+    { id: 'door-3', x: 900, y: 250, w: 200, h: 50, isClosed: false, closeTimer: 0, cooldown: 0 },  // Elec
+    { id: 'door-4', x: 900, y: 1200, w: 200, h: 50, isClosed: false, closeTimer: 0, cooldown: 0 }  // Storage (NEW)
 ];
 
 const elecPanel = { x: 950, y: 50, w: 100, h: 60 };
 
-// Vents placed precisely inside rooms based on your image layout
 const vents = [
-    { x: 200, y: 250 },   // Vent 1: Left Top Hallway (Reactor Area)
-    { x: 950, y: 200 },   // Vent 2: Electrical Room (Right next to panel)
-    { x: 1300, y: 650 },  // Vent 3: Admin Room (Right side compartment)
-    { x: 200, y: 1200 }   // Vent 4: Left Bottom Hallway
+    { x: 200, y: 250 },   // Reactor
+    { x: 950, y: 200 },   // Elec
+    { x: 1300, y: 650 },  // Admin
+    { x: 200, y: 1200 }   // Storage Hall
 ];
 
 function checkCollision(nx, ny, size) {
@@ -97,14 +97,14 @@ function checkCollision(nx, ny, size) {
     return false;
 }
 
-// --- AI PATHFINDING GRAPH ---
+// AI Pathfinding (Added Storage Waypoint)
 const waypoints = [
     { id: 0, x: 250, y: 300, edges: [2] }, { id: 1, x: 250, y: 1200, edges: [2] },        
     { id: 2, x: 250, y: 700, edges: [0, 1, 3] }, { id: 3, x: 550, y: 700, edges: [2, 4] },      
     { id: 4, x: 800, y: 700, edges: [3, 6, 10] }, { id: 5, x: 1000, y: 150, edges: [6] },        
-    { id: 6, x: 1000, y: 700, edges: [4, 5, 7] }, { id: 7, x: 1150, y: 700, edges: [6, 8, 9] },  
+    { id: 6, x: 1000, y: 700, edges: [4, 5, 7, 11] }, { id: 7, x: 1150, y: 700, edges: [6, 8, 9] },  
     { id: 8, x: 1450, y: 500, edges: [7] }, { id: 9, x: 1450, y: 900, edges: [7] },        
-    { id: 10, x: 800, y: 1300, edges: [4] }        
+    { id: 10, x: 800, y: 1300, edges: [4] }, { id: 11, x: 1000, y: 1350, edges: [6] } // Storage node
 ];
 
 function getClosestNode(x, y) {
@@ -165,7 +165,11 @@ class Crewmate {
     }
 
     update() {
-        if (this.isDead || this.isEjected || gamePaused || gameWon) return; 
+        // Fix: If dead, ensure they stop moving forever
+        if (this.isDead || this.isEjected || gamePaused || gameWon) {
+            this.isMoving = false;
+            return; 
+        }
         
         if (this.inVent) {
             this.isMoving = false;
@@ -206,9 +210,7 @@ class Crewmate {
                                 let ny = this.y + Math.sin(angle) * this.speed;
                                 if (!checkCollision(nx, ny, drawSize)) {
                                     this.x = nx; this.y = ny; this.isMoving = true;
-                                    if (Math.abs(Math.cos(angle)) > 0.1) {
-                                        this.lastDir = (Math.cos(angle) > 0) ? 'right' : 'left';
-                                    }
+                                    if (Math.abs(Math.cos(angle)) > 0.1) this.lastDir = (Math.cos(angle) > 0) ? 'right' : 'left';
                                 }
                                 return; 
                             }
@@ -272,9 +274,7 @@ class Crewmate {
 
                     if (!checkCollision(nx, ny, drawSize)) {
                         this.x = nx; this.y = ny; this.isMoving = true;
-                        if (Math.abs(Math.cos(angle)) > 0.1) {
-                            this.lastDir = (Math.cos(angle) > 0) ? 'right' : 'left';
-                        }
+                        if (Math.abs(Math.cos(angle)) > 0.1) this.lastDir = (Math.cos(angle) > 0) ? 'right' : 'left';
                     } else {
                         if (!checkCollision(nx, this.y, drawSize)) { this.x = nx; this.isMoving = true; }
                         else if (!checkCollision(this.x, ny, drawSize)) { this.y = ny; this.isMoving = true; }
@@ -312,13 +312,15 @@ class Crewmate {
         
         if (this.lastDir === 'left') ctx.scale(-1, 1);
         
-        if (this.isMoving) {
+        // FIX: The death animation override
+        if (this.isDead && !this.isCleanedUp) {
+            ctx.drawImage(deadImg, -drawSize/2, -drawSize/2, drawSize, drawSize);
+        } else if (this.isMoving) {
             let bob = Math.sin(Date.now() / 100) * 4;
             ctx.rotate(Math.sin(Date.now() / 100) * 0.1);
             ctx.drawImage(walkImg, -drawSize/2, -drawSize/2 + bob, drawSize, drawSize);
         } else {
-            const img = (this.isDead && !this.isCleanedUp) ? deadImg : standImg;
-            ctx.drawImage(img, -drawSize/2, -drawSize/2, drawSize, drawSize);
+            ctx.drawImage(standImg, -drawSize/2, -drawSize/2, drawSize, drawSize);
         }
 
         ctx.restore();
@@ -339,7 +341,7 @@ const player = new Crewmate(waypoints[4].x, waypoints[4].y, true, 'Red');
 const bots = [
     new Crewmate(waypoints[0].x, waypoints[0].y, false, 'Blue'),
     new Crewmate(waypoints[1].x, waypoints[1].y, false, 'Green'),
-    new Crewmate(waypoints[5].x, waypoints[5].y, false, 'Yellow'),
+    new Crewmate(waypoints[5].x, waypoints[5].y, false, 'Yellow'), // Spawns directly in Electrical!
     new Crewmate(waypoints[8].x, waypoints[8].y, false, 'Pink'),
     new Crewmate(waypoints[9].x, waypoints[9].y, false, 'Cyan'),
     new Crewmate(waypoints[10].x, waypoints[10].y, false, 'Black'),
@@ -809,9 +811,27 @@ function gameLoop() {
     let camY = canvas.height / 2 - player.y - drawSize / 2;
     ctx.translate(camX, camY);
 
+    // Floor
     ctx.fillStyle = "#2a2a2a"; ctx.fillRect(0, 0, WORLD_W, WORLD_H);
     
-    // Draw Vents Floor Graphics exactly at room nodes
+    // ROOM DECORATIONS & LABELS
+    ctx.fillStyle = "rgba(255,255,255,0.05)";
+    ctx.font = "bold 80px 'Varela Round'";
+    ctx.textAlign = "center";
+    ctx.fillText("REACTOR", 250, 450);
+    ctx.fillText("ELECTRICAL", 950, 180);
+    ctx.fillText("ADMIN", 1300, 600);
+    ctx.fillText("STORAGE", 950, 1350);
+
+    // Simple Props
+    ctx.fillStyle = "#111"; 
+    ctx.beginPath(); ctx.arc(250, 300, 80, 0, Math.PI*2); ctx.fill(); // Reactor Core
+    ctx.fillStyle = "#333";
+    ctx.fillRect(1150, 450, 200, 100); // Admin Table
+    ctx.fillStyle = "#5c4033"; 
+    ctx.fillRect(850, 1350, 80, 80); ctx.fillRect(950, 1300, 80, 80); // Storage Boxes
+
+    // Vents Floor Graphics
     ctx.fillStyle = "#4a4a4a";
     ctx.strokeStyle = "#111";
     ctx.lineWidth = 4;
@@ -826,8 +846,10 @@ function gameLoop() {
         ctx.stroke();
     });
 
+    // Walls
     ctx.fillStyle = "#4a5a6a"; walls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
 
+    // Doors
     doors.forEach(d => {
         if (d.isClosed) {
             ctx.fillStyle = "#b53a3a"; ctx.fillRect(d.x, d.y, d.w, d.h);
@@ -839,6 +861,7 @@ function gameLoop() {
         }
     });
 
+    // Electrical Panel
     ctx.fillStyle = lightsOut ? "#ff4747" : "#555"; 
     ctx.fillRect(elecPanel.x, elecPanel.y, elecPanel.w, elecPanel.h);
     ctx.fillStyle = "white"; ctx.font = "bold 20px 'Varela Round'"; ctx.textAlign = "center";
@@ -860,7 +883,6 @@ function gameLoop() {
         ctx.fillStyle = grad; ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
     
-    // UI Notification Overlay for Vent Navigation
     if (player.inVent && !gamePaused && !gameWon) {
         ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
         ctx.fillRect(0, 0, canvas.width, 80);
