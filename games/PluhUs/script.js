@@ -97,27 +97,48 @@ function checkCollision(nx, ny, size) {
     return false;
 }
 
-// --- DYNAMIC SPRITE TINTER ---
-function getTintedSprite(img, colorHex) {
+// --- DYNAMIC SPRITE RECOLORER ---
+function getRecoloredSprite(img, suitColor) {
     let tCanvas = document.createElement('canvas');
     tCanvas.width = drawSize; 
     tCanvas.height = drawSize;
     let tCtx = tCanvas.getContext('2d');
     
-    // 1. Draw base sprite
+    // Convert hex suit color to RGB
+    const suitRgb = parseInt(suitColor.slice(1), 16);
+    const suitR = (suitRgb >> 16) & 255;
+    const suitG = (suitRgb >> 8) & 255;
+    const suitB = suitRgb & 255;
+
+    // Convert hex backpack color (15% darker) to RGB
+    const backHex = chroma(suitColor).darken(0.15).hex();
+    const backRgb = parseInt(backHex.slice(1), 16);
+    const backR = (backRgb >> 16) & 255;
+    const backG = (backRgb >> 8) & 255;
+    const backB = backRgb & 255;
+
+    // Draw base sprite to get pixel data
     tCtx.drawImage(img, 0, 0, drawSize, drawSize);
-    
-    // 2. Tint it (Only draws color where the sprite exists, keeping transparency)
-    tCtx.globalCompositeOperation = 'source-atop';
-    tCtx.fillStyle = colorHex;
-    tCtx.globalAlpha = 0.55; // Blend amount so original shading/lines show through
-    tCtx.fillRect(0, 0, drawSize, drawSize);
-    
-    // 3. Multiply blend to make the dark outlines pop back out
-    tCtx.globalAlpha = 1.0;
-    tCtx.globalCompositeOperation = 'multiply';
-    tCtx.drawImage(img, 0, 0, drawSize, drawSize);
-    
+    const imageData = tCtx.getImageData(0, 0, drawSize, drawSize);
+    const pixels = imageData.data;
+
+    // Loop through pixels and swap target colors
+    for (let i = 0; i < pixels.length; i += 4) {
+        // Red = 255, Green = 0, Blue = 0 for pure RED (suit body)
+        if (pixels[i] === 255 && pixels[i+1] === 0 && pixels[i+2] === 0) {
+            pixels[i]   = suitR;
+            pixels[i+1] = suitG;
+            pixels[i+2] = suitB;
+        }
+        // Red = 0, Green = 0, Blue = 255 for pure BLUE (backpack)
+        if (pixels[i] === 0 && pixels[i+1] === 0 && pixels[i+2] === 255) {
+            pixels[i]   = backR;
+            pixels[i+1] = backG;
+            pixels[i+2] = backB;
+        }
+    }
+
+    tCtx.putImageData(imageData, 0, 0);
     return tCanvas;
 }
 
@@ -173,7 +194,7 @@ class Crewmate {
         this.isDead = false; this.isEjected = false; this.isCleanedUp = false; 
         this.killer = null; 
         
-        // Color mapping for the dynamic tinter
+        // Color mapping for the dynamic recolorer
         const colorMap = {
             'Red': '#ff0000', 'Blue': '#1e90ff', 'Green': '#32cd32', 'Yellow': '#ffd700',
             'Pink': '#ff69b4', 'Cyan': '#00ffff', 'Black': '#555555', 'Orange': '#ff8c00'
@@ -368,10 +389,10 @@ class Crewmate {
         if (this.isEjected) return; 
 
         // Generate colored sprites on-the-fly once images load
-        if (standImg.complete && standImg.naturalWidth > 0 && !this.tintedStand) {
-            this.tintedStand = getTintedSprite(standImg, this.colorHex);
-            this.tintedWalk = getTintedSprite(walkImg, this.colorHex);
-            this.tintedDead = getTintedSprite(deadImg, this.colorHex);
+        if (chroma && standImg.complete && standImg.naturalWidth > 0 && !this.tintedStand) {
+            this.tintedStand = getRecoloredSprite(standImg, this.colorHex);
+            this.tintedWalk = getRecoloredSprite(walkImg, this.colorHex);
+            this.tintedDead = getRecoloredSprite(deadImg, this.colorHex);
         }
 
         ctx.save();
