@@ -6,27 +6,15 @@ window.onresize = () => { canvas.width = window.innerWidth; canvas.height = wind
 const standImg = new Image(); standImg.src = 'Stand_mogus.png';
 const walkImg = new Image();  walkImg.src = 'walk_mogus_1.png';
 const deadImg = new Image();  deadImg.src = 'Death_mogus.png';
-const mapBg = new Image(); 
 
 const drawSize = 60; 
 let gamePaused = false; 
 let gameWon = false; 
 
-// --- DYNAMIC DATA-DRIVEN MAP VARS ---
-let WORLD_W = 2000;
-let WORLD_H = 1500;
-let walls = [];
-let doors = [];
-let elecPanel = { x: 0, y: 0, w: 0, h: 0 };
-let vents = [];
-let waypoints = [];
-let player;
-let bots = [];
-
 window.globalPlayerSpeed = 5;
 window.globalBotSpeed = 3.5;
 
-// --- DYNAMIC VENT UI INJECTION ---
+// --- DYNAMIC VENT UI INJECTION (Clickable Arrows) ---
 const ventUIStyle = document.createElement('style');
 ventUIStyle.innerHTML = `
     .vent-arrow {
@@ -117,6 +105,52 @@ let isSabotageMapOpen = false;
 // Gaslight Mechanic Variables
 let gaslightCounters = {};
 let gaslightTarget = null;
+
+// --- HARDCODED MAP DATA ---
+const WORLD_W = 2000;
+const WORLD_H = 1500;
+
+const walls = [
+    {x: 0, y: 0, w: WORLD_W, h: 50}, {x: 0, y: WORLD_H-50, w: WORLD_W, h: 50}, 
+    {x: 0, y: 0, w: 50, h: WORLD_H}, {x: WORLD_W-50, y: 0, w: 50, h: WORLD_H}, 
+    {x: 400, y: 0, w: 100, h: 550}, {x: 400, y: 850, w: 100, h: 650}, 
+    {x: 1000, y: 300, w: 600, h: 100}, {x: 1000, y: 1000, w: 600, h: 100}, 
+    {x: 1000, y: 400, w: 100, h: 150}, {x: 1000, y: 850, w: 100, h: 150}, 
+    {x: 800, y: 0, w: 100, h: 300}, {x: 1100, y: 0, w: 100, h: 300}, 
+    {x: 800, y: 1200, w: 100, h: 300}, {x: 1100, y: 1200, w: 100, h: 300} 
+];
+
+const doors = [
+    { id: 'door-1', x: 400, y: 550, w: 100, h: 300, isClosed: false, closeTimer: 0, cooldown: 0 }, 
+    { id: 'door-2', x: 1000, y: 550, w: 100, h: 300, isClosed: false, closeTimer: 0, cooldown: 0 }, 
+    { id: 'door-3', x: 900, y: 250, w: 200, h: 50, isClosed: false, closeTimer: 0, cooldown: 0 },  
+    { id: 'door-4', x: 900, y: 1200, w: 200, h: 50, isClosed: false, closeTimer: 0, cooldown: 0 }  
+];
+
+const elecPanel = { x: 950, y: 50, w: 100, h: 60 };
+
+const vents = [
+    { x: 200, y: 250 },   
+    { x: 950, y: 200 },   
+    { x: 1300, y: 650 },  
+    { x: 200, y: 1200 }   
+];
+
+// Re-centered waypoints perfectly positioned for hallways
+const waypoints = [
+    { id: 0, x: 170, y: 270, edges: [2] },         
+    { id: 1, x: 170, y: 1170, edges: [2] },        
+    { id: 2, x: 170, y: 670, edges: [0, 1, 4] },   
+    { id: 4, x: 620, y: 670, edges: [2, 6] },  
+    { id: 5, x: 970, y: 150, edges: [12] },       
+    { id: 6, x: 920, y: 670, edges: [4, 7, 10, 12] },  
+    { id: 7, x: 1270, y: 670, edges: [6, 8, 9] },  
+    { id: 8, x: 1370, y: 470, edges: [7] },        
+    { id: 9, x: 1370, y: 870, edges: [7] },        
+    { id: 10, x: 920, y: 1070, edges: [6, 11] },   
+    { id: 11, x: 970, y: 1270, edges: [10] },     
+    { id: 12, x: 920, y: 350, edges: [5, 6] }      
+];
 
 function checkCollision(nx, ny, size) {
     let padding = 5;
@@ -457,6 +491,17 @@ class Crewmate {
         }
     }
 }
+
+const player = new Crewmate(waypoints[4].x, waypoints[4].y, true, 'Red');
+const bots = [
+    new Crewmate(waypoints[0].x, waypoints[0].y, false, 'Blue'),
+    new Crewmate(waypoints[1].x, waypoints[1].y, false, 'Green'),
+    new Crewmate(waypoints[5].x, waypoints[5].y, false, 'Yellow'),
+    new Crewmate(waypoints[8].x, waypoints[8].y, false, 'Pink'),
+    new Crewmate(waypoints[9].x, waypoints[9].y, false, 'Cyan'),
+    new Crewmate(waypoints[11].x, waypoints[11].y, false, 'Black'), 
+    new Crewmate(waypoints[7].x, waypoints[7].y, false, 'Orange')
+];
 
 function assignRoles() {
     let allEntities = [player, ...bots];
@@ -870,42 +915,13 @@ function drawNavigationArrow() {
     ctx.restore();
 }
 
-// --- INITIALIZE DATA-DRIVEN ENGINE ---
-async function initEngine() {
-    try {
-        const res = await fetch('map.json');
-        const data = await res.json();
-        
-        WORLD_W = data.worldWidth;
-        WORLD_H = data.worldHeight;
-        walls = data.walls;
-        vents = data.vents;
-        elecPanel = data.elecPanel;
-        waypoints = data.waypoints;
-        
-        doors = data.doors.map(d => ({
-            ...d, isClosed: false, closeTimer: 0, cooldown: 0
-        }));
-
-        player = new Crewmate(waypoints[4].x, waypoints[4].y, true, 'Red');
-        bots = [
-            new Crewmate(waypoints[0].x, waypoints[0].y, false, 'Blue'),
-            new Crewmate(waypoints[1].x, waypoints[1].y, false, 'Green'),
-            new Crewmate(waypoints[5].x, waypoints[5].y, false, 'Yellow'),
-            new Crewmate(waypoints[8].x, waypoints[8].y, false, 'Pink'),
-            new Crewmate(waypoints[9].x, waypoints[9].y, false, 'Cyan'),
-            new Crewmate(waypoints[11].x, waypoints[11].y, false, 'Black'), 
-            new Crewmate(waypoints[7].x, waypoints[7].y, false, 'Orange')
-        ];
-
-        mapBg.src = 'map.png';
-        mapBg.onload = () => {
-            assignRoles();
-            requestAnimationFrame(gameLoop);
-        };
-    } catch (e) {
-        console.error("Failed to load map data! Ensure you are running a local web server.", e);
-    }
+function drawCrate(x, y, size) {
+    ctx.fillStyle = "rgba(0,0,0,0.4)"; ctx.fillRect(x+5, y+5, size, size);
+    ctx.fillStyle = "#8B5A2B"; ctx.fillRect(x, y, size, size);
+    ctx.lineWidth = 4; ctx.strokeStyle = "#5C3A21"; ctx.strokeRect(x+2, y+2, size-4, size-4);
+    ctx.beginPath(); ctx.moveTo(x+4, y+4); ctx.lineTo(x+size-4, y+size-4); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x+size-4, y+4); ctx.lineTo(x+4, y+size-4); ctx.stroke();
+    ctx.fillStyle = "#d2b48c"; ctx.fillRect(x + size/2 - 5, y, 10, size);
 }
 
 // --- RENDER ENGINE ---
@@ -987,11 +1003,72 @@ function gameLoop() {
     let camY = canvas.height / 2 - player.y - drawSize / 2;
     ctx.translate(camX, camY);
 
-    if (mapBg.complete) {
-        ctx.drawImage(mapBg, 0, 0, WORLD_W, WORLD_H);
-    } else {
-        ctx.fillStyle = "#2a2a2a"; ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+    ctx.fillStyle = "#2a2a2a"; ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+    
+    // 1. Reactor Core Room
+    ctx.fillStyle = "#1e293b"; ctx.beginPath(); ctx.arc(250, 300, 130, 0, Math.PI*2); ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = "#334155";
+    for(let i=130; i<=370; i+=25) { 
+        ctx.beginPath(); ctx.moveTo(i, 170); ctx.lineTo(i, 430); ctx.stroke(); 
+        ctx.beginPath(); ctx.moveTo(130, i-130+170); ctx.lineTo(370, i-130+170); ctx.stroke(); 
     }
+    let radGrad = ctx.createRadialGradient(250, 300, 5, 250, 300, 95);
+    radGrad.addColorStop(0, "#ffffff"); radGrad.addColorStop(0.25, "#38bdf8"); radGrad.addColorStop(0.8, "rgba(2, 132, 199, 0.2)"); radGrad.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = radGrad; ctx.beginPath(); ctx.arc(250, 300, 95, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = "#0284c7"; ctx.lineWidth = 12; ctx.beginPath(); ctx.arc(250, 300, 85, 0, Math.PI*2); ctx.stroke();
+    ctx.fillStyle = "#64748b"; ctx.fillRect(242, 170, 16, 45); ctx.fillRect(242, 385, 16, 45); ctx.fillRect(130, 292, 45, 16); ctx.fillRect(325, 292, 45, 16);
+
+    // 2. Admin Command Room
+    ctx.fillStyle = "#1e293b"; ctx.fillRect(1130, 480, 290, 160);
+    ctx.fillStyle = "#0f172a"; ctx.fillRect(1145, 495, 260, 130);
+    ctx.strokeStyle = "#334155"; ctx.lineWidth = 6; ctx.strokeRect(1145, 495, 260, 130);
+    let holoBase = ctx.createRadialGradient(1275, 560, 5, 1275, 560, 75);
+    holoBase.addColorStop(0, "rgba(34, 197, 94, 0.45)"); holoBase.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = holoBase; ctx.fillRect(1150, 500, 250, 120);
+    let t = Date.now() / 800;
+    ctx.strokeStyle = "rgba(74, 222, 128, 0.6)"; ctx.lineWidth = 3;
+    if(ctx.ellipse) {
+        ctx.beginPath(); ctx.ellipse(1275, 560, 90 + Math.sin(t)*8, 45 + Math.sin(t)*4, 0, 0, Math.PI*2); ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(1275, 560, 45 - Math.cos(t)*6, 22 - Math.cos(t)*3, 0, 0, Math.PI*2); ctx.stroke();
+    }
+
+    // 3. Storage Supply Room
+    drawCrate(840, 1310, 75);
+    drawCrate(930, 1280, 95);
+    drawCrate(885, 1375, 85);
+
+    // 4. Electrical Control Room
+    ctx.save();
+    ctx.beginPath(); ctx.rect(850, 250, 200, 20); ctx.clip();
+    ctx.fillStyle = "#eab308"; ctx.fillRect(850, 250, 200, 20);
+    ctx.fillStyle = "#0f172a";
+    for(let i=-30; i<250; i+=35) {
+        ctx.beginPath(); ctx.moveTo(850+i, 250); ctx.lineTo(850+i+20, 250); ctx.lineTo(850+i+5, 270); ctx.lineTo(850+i-15, 270); ctx.fill();
+    }
+    ctx.restore();
+    ctx.fillStyle = "#334155"; ctx.fillRect(810, 50, 75, 165); 
+    ctx.fillStyle = "#1e293b"; ctx.fillRect(815, 55, 65, 155); 
+    ctx.fillStyle = "#020617"; ctx.fillRect(822, 65, 51, 40); ctx.fillRect(822, 115, 51, 85); 
+    ctx.fillStyle = (Math.floor(Date.now()/400) % 2 === 0) ? "#ef4444" : "#7f1d1d"; ctx.beginPath(); ctx.arc(832, 75, 4, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = (Math.floor(Date.now()/250) % 2 === 0) ? "#22c55e" : "#14532d"; ctx.beginPath(); ctx.arc(847, 75, 4, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = (Math.floor(Date.now()/600) % 2 === 0) ? "#3b82f6" : "#1e3a8a"; ctx.beginPath(); ctx.arc(862, 75, 4, 0, Math.PI*2); ctx.fill();
+
+    // Vents
+    ctx.fillStyle = "#475569";
+    ctx.strokeStyle = "#0f172a";
+    ctx.lineWidth = 4;
+    vents.forEach(v => {
+        ctx.fillRect(v.x - 30, v.y - 30, 60, 60);
+        ctx.strokeRect(v.x - 30, v.y - 30, 60, 60);
+        ctx.beginPath();
+        for(let i = -15; i <= 15; i += 10) {
+            ctx.moveTo(v.x - 21, v.y + i);
+            ctx.lineTo(v.x + 21, v.y + i);
+        }
+        ctx.stroke();
+    });
+
+    ctx.fillStyle = "#4a5a6a"; walls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
 
     doors.forEach(d => {
         if (d.isClosed) {
@@ -1030,5 +1107,6 @@ function gameLoop() {
     requestAnimationFrame(gameLoop);
 }
 
-// Start the engine!
-initEngine();
+// Start Game
+assignRoles();
+gameLoop();
