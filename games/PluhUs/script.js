@@ -97,6 +97,30 @@ function checkCollision(nx, ny, size) {
     return false;
 }
 
+// --- DYNAMIC SPRITE TINTER ---
+function getTintedSprite(img, colorHex) {
+    let tCanvas = document.createElement('canvas');
+    tCanvas.width = drawSize; 
+    tCanvas.height = drawSize;
+    let tCtx = tCanvas.getContext('2d');
+    
+    // 1. Draw base sprite
+    tCtx.drawImage(img, 0, 0, drawSize, drawSize);
+    
+    // 2. Tint it (Only draws color where the sprite exists, keeping transparency)
+    tCtx.globalCompositeOperation = 'source-atop';
+    tCtx.fillStyle = colorHex;
+    tCtx.globalAlpha = 0.55; // Blend amount so original shading/lines show through
+    tCtx.fillRect(0, 0, drawSize, drawSize);
+    
+    // 3. Multiply blend to make the dark outlines pop back out
+    tCtx.globalAlpha = 1.0;
+    tCtx.globalCompositeOperation = 'multiply';
+    tCtx.drawImage(img, 0, 0, drawSize, drawSize);
+    
+    return tCanvas;
+}
+
 // --- AI PATHFINDING GRAPH ---
 const waypoints = [
     { id: 0, x: 250, y: 300, edges: [2] },         
@@ -149,6 +173,16 @@ class Crewmate {
         this.isDead = false; this.isEjected = false; this.isCleanedUp = false; 
         this.killer = null; 
         
+        // Color mapping for the dynamic tinter
+        const colorMap = {
+            'Red': '#ff0000', 'Blue': '#1e90ff', 'Green': '#32cd32', 'Yellow': '#ffd700',
+            'Pink': '#ff69b4', 'Cyan': '#00ffff', 'Black': '#555555', 'Orange': '#ff8c00'
+        };
+        this.colorHex = colorMap[this.colorName] || '#ffffff';
+        this.tintedStand = null;
+        this.tintedWalk = null;
+        this.tintedDead = null;
+
         this.isImpostor = false;
         this.internalKillCooldown = 600; 
         
@@ -332,28 +366,39 @@ class Crewmate {
 
     draw(ctx) {
         if (this.isEjected) return; 
-        
+
+        // Generate colored sprites on-the-fly once images load
+        if (standImg.complete && standImg.naturalWidth > 0 && !this.tintedStand) {
+            this.tintedStand = getTintedSprite(standImg, this.colorHex);
+            this.tintedWalk = getTintedSprite(walkImg, this.colorHex);
+            this.tintedDead = getTintedSprite(deadImg, this.colorHex);
+        }
+
         ctx.save();
         ctx.translate(this.x + drawSize/2, this.y + drawSize/2);
         
         if (this.inVent) ctx.globalAlpha = 0.4;
-        
         if (this.lastDir === 'left') ctx.scale(-1, 1);
         
+        // Pick the correct dynamically colored sprite
+        let currentImg = this.tintedStand || standImg;
+        if (this.isDead && !this.isCleanedUp) currentImg = this.tintedDead || deadImg;
+        else if (this.isMoving) currentImg = this.tintedWalk || walkImg;
+
         if (this.isDead && !this.isCleanedUp) {
-            ctx.drawImage(deadImg, -drawSize/2, -drawSize/2, drawSize, drawSize);
+            ctx.drawImage(currentImg, -drawSize/2, -drawSize/2, drawSize, drawSize);
         } else if (this.isMoving) {
             let bob = Math.sin(Date.now() / 100) * 4;
             ctx.rotate(Math.sin(Date.now() / 100) * 0.1);
-            ctx.drawImage(walkImg, -drawSize/2, -drawSize/2 + bob, drawSize, drawSize);
+            ctx.drawImage(currentImg, -drawSize/2, -drawSize/2 + bob, drawSize, drawSize);
         } else {
-            ctx.drawImage(standImg, -drawSize/2, -drawSize/2, drawSize, drawSize);
+            ctx.drawImage(currentImg, -drawSize/2, -drawSize/2, drawSize, drawSize);
         }
 
         ctx.restore();
 
         if (!this.inVent || this.isPlayer) {
-            ctx.fillStyle = (this.isImpostor && player.isImpostor) ? "#ff4747" : "white";
+            ctx.fillStyle = this.colorHex;
             ctx.font = "bold 14px 'Varela Round'";
             ctx.textAlign = "center";
             ctx.strokeStyle = "black"; 
@@ -548,7 +593,15 @@ function addChatMsg(author, text) {
     const box = document.getElementById('chat-box');
     let msg = document.createElement('div');
     msg.className = 'chat-msg';
-    msg.innerHTML = `<span class="name" style="color: ${author.toLowerCase()}">${author}:</span> ${text}`;
+    
+    const colorMap = {
+        'Red': '#ff0000', 'Blue': '#1e90ff', 'Green': '#32cd32', 'Yellow': '#ffd700',
+        'Pink': '#ff69b4', 'Cyan': '#00ffff', 'Black': '#555555', 'Orange': '#ff8c00'
+    };
+    let hex = colorMap[author] || '#ffffff';
+    if(author === "SYSTEM") hex = "#0f0";
+
+    msg.innerHTML = `<span class="name" style="color: ${hex}; text-shadow: 1px 1px 2px #000;">${author}:</span> ${text}`;
     box.appendChild(msg);
     box.scrollTop = box.scrollHeight; 
 }
@@ -680,6 +733,7 @@ function triggerReport(reporter, deadBody) {
         alivePlayers.forEach(p => {
             let btn = document.createElement('button');
             btn.className = 'vote-btn'; btn.innerText = `Vote ${p.colorName}`;
+            btn.style.borderColor = p.colorHex;
             btn.onclick = () => castVote(p, suspect, alivePlayers, selfReportAccusers, reporter);
             btnContainer.appendChild(btn);
         });
@@ -695,7 +749,7 @@ function castVote(playerChoice, suspect, alivePlayers, selfReportAccusers, repor
     alivePlayers.forEach(p => voteLedger[p.colorName] = []);
 
     let pTarget = playerChoice ? playerChoice.colorName : "Skip";
-    voteLedger[pTarget].push(player.colorName);
+    voteLedger[pTarget].push(player);
 
     alivePlayers.forEach(p => {
         if (!p.isPlayer) {
@@ -707,7 +761,7 @@ function castVote(playerChoice, suspect, alivePlayers, selfReportAccusers, repor
             } else if (suspect.colorName !== "Nobody") {
                  target = suspect.colorName;
             }
-            voteLedger[target].push(p.colorName);
+            voteLedger[target].push(p);
         }
     });
 
@@ -723,14 +777,14 @@ function castVote(playerChoice, suspect, alivePlayers, selfReportAccusers, repor
     
     for (let name in voteLedger) {
         if (voteLedger[name].length > 0) {
-            let voterDots = voteLedger[name].map(voterColor => 
-                `<span style="display:inline-block; width:16px; height:16px; background-color:${voterColor.toLowerCase()}; border:2px solid #fff; border-radius:50%; margin-left:4px; box-shadow: 0 0 5px rgba(0,0,0,0.5);"></span>`
+            let voterDots = voteLedger[name].map(voter => 
+                `<span style="display:inline-block; width:16px; height:16px; background-color:${voter.colorHex}; border:2px solid #fff; border-radius:50%; margin-left:4px; box-shadow: 0 0 5px rgba(0,0,0,0.5);"></span>`
             ).join('');
             
-            let targetColor = name === "Skip" ? "#888" : name.toLowerCase();
+            let targetColor = name === "Skip" ? "#888" : ([player, ...bots].find(c=>c.colorName === name) || {}).colorHex || '#fff';
             resultsHTML += `
                 <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(0,0,0,0.6); padding:8px 15px; border-radius:8px; border-left: 5px solid ${targetColor};">
-                    <span style="color:white; font-weight:bold; font-size:16px;">${name} <span style="font-size:12px; color:#aaa;">(${voteLedger[name].length})</span></span>
+                    <span style="color:${targetColor}; font-weight:bold; font-size:16px; text-shadow: 1px 1px 2px #000;">${name} <span style="font-size:12px; color:#aaa;">(${voteLedger[name].length})</span></span>
                     <div>${voterDots}</div>
                 </div>
             `;
@@ -871,8 +925,6 @@ function gameLoop() {
     ctx.fillStyle = "#2a2a2a"; ctx.fillRect(0, 0, WORLD_W, WORLD_H);
     
     // --- ENVIRONMENTAL DECORATIONS ---
-    
-    // Reactor Core
     ctx.fillStyle = "#1a1a1a";
     ctx.beginPath(); ctx.arc(250, 300, 100, 0, Math.PI*2); ctx.fill();
     ctx.strokeStyle = "#0ff"; ctx.lineWidth = 10;
@@ -880,7 +932,6 @@ function gameLoop() {
     ctx.fillStyle = "rgba(0, 255, 255, 0.3)";
     ctx.beginPath(); ctx.arc(250, 300, 60 + Math.sin(Date.now()/300)*5, 0, Math.PI*2); ctx.fill();
 
-    // Admin Table & Hologram
     ctx.fillStyle = "#222";
     ctx.fillRect(1150, 500, 250, 120); 
     ctx.fillStyle = "#4caf50"; 
@@ -888,19 +939,17 @@ function gameLoop() {
     ctx.fillRect(1170, 520, 210, 80);
     ctx.globalAlpha = 1.0;
 
-    // Storage Crates & Tape
     ctx.fillStyle = "#654321"; 
     ctx.fillRect(830, 1320, 90, 90);
     ctx.fillStyle = "#8B5A2B"; 
     ctx.fillRect(940, 1280, 100, 100);
     ctx.fillStyle = "#A0522D"; 
     ctx.fillRect(900, 1380, 80, 80);
-    ctx.fillStyle = "#d2b48c"; // Tape
+    ctx.fillStyle = "#d2b48c"; 
     ctx.fillRect(830, 1360, 90, 10);
     ctx.fillRect(940, 1325, 100, 10);
     ctx.fillRect(935, 1380, 10, 80);
 
-    // Electrical Hazard Stripes & Server Box
     ctx.fillStyle = "#ffd700";
     ctx.fillRect(850, 250, 200, 20);
     ctx.fillStyle = "#000";
@@ -912,7 +961,6 @@ function gameLoop() {
     ctx.fillStyle = (Math.floor(Date.now()/800) % 2 === 0) ? "#0f0" : "#050";
     ctx.fillRect(840, 100, 10, 10);
 
-    // Vents
     ctx.fillStyle = "#4a4a4a";
     ctx.strokeStyle = "#111";
     ctx.lineWidth = 4;
