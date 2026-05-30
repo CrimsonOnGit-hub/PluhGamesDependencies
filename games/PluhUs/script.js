@@ -55,7 +55,7 @@ let lightsOut = false;
 let visionRadius = 500; 
 let isSabotageMapOpen = false;
 
-// --- MAP, WALLS, & DOORS ---
+// --- MAP & VENTS ---
 const WORLD_W = 2000;
 const WORLD_H = 1500;
 const walls = [
@@ -74,6 +74,14 @@ const doors = [
 ];
 
 const elecPanel = { x: 950, y: 50, w: 100, h: 60 };
+
+// 4 Corners of the map!
+const vents = [
+    { x: 150, y: 150 },   // Top Left
+    { x: 150, y: 1350 },  // Bottom Left
+    { x: 1850, y: 150 },  // Top Right
+    { x: 1850, y: 1350 }  // Bottom Right
+];
 
 function checkCollision(nx, ny, size) {
     let padding = 5;
@@ -144,18 +152,28 @@ class Crewmate {
         this.goingToFixLights = false;
         this.finalOffsetX = 0;
         this.finalOffsetY = 0;
+        
+        // Vent State
+        this.inVent = false;
+        this.currentVent = -1;
 
         this.isMoving = false; this.animTimer = 0; this.showWalkFrame = false;
         this.lastDir = 'right';
         this.memory = {}; 
         
-        // Randomization for unique bot sway
         this.swaySpeed = 200 + Math.random() * 200;
         this.swayIntensity = 0.5 + Math.random() * 0.8;
     }
 
     update() {
         if (this.isDead || this.isEjected || gamePaused || gameWon) return; 
+        
+        // If in a vent, freeze all normal physical movement and logic
+        if (this.inVent) {
+            this.isMoving = false;
+            return;
+        }
+
         this.isMoving = false;
 
         if (this.isPlayer) {
@@ -166,11 +184,10 @@ class Crewmate {
             if (keys['KeyD']) { nx += this.speed; this.isMoving = true; this.lastDir = 'right'; }
             if (!checkCollision(nx, ny, drawSize)) { this.x = nx; this.y = ny; }
         } else {
-            // --- AI IMPOSTOR LOGIC ---
             if (this.isImpostor) {
                 if (this.internalKillCooldown > 0) this.internalKillCooldown--;
                 if (this.internalKillCooldown <= 0) {
-                    let aliveCrew = [player, ...bots].filter(c => !c.isDead && !c.isEjected && !c.isImpostor);
+                    let aliveCrew = [player, ...bots].filter(c => !c.isDead && !c.isEjected && !c.isImpostor && !c.inVent);
                     let target = null;
                     let minDist = Infinity;
                     aliveCrew.forEach(c => {
@@ -191,7 +208,6 @@ class Crewmate {
                                 let ny = this.y + Math.sin(angle) * this.speed;
                                 if (!checkCollision(nx, ny, drawSize)) {
                                     this.x = nx; this.y = ny; this.isMoving = true;
-                                    // Smooth flip to stop moonwalking
                                     if (Math.abs(Math.cos(angle)) > 0.1) {
                                         this.lastDir = (Math.cos(angle) > 0) ? 'right' : 'left';
                                     }
@@ -203,7 +219,6 @@ class Crewmate {
                 }
             }
             
-            // --- PATHFINDING & WOBBLE ---
             if (lightsOut && !this.goingToFixLights && !this.isImpostor) {
                 this.goingToFixLights = true;
                 let start = getClosestNode(this.x, this.y);
@@ -218,9 +233,8 @@ class Crewmate {
                 return;
             }
             
-            // Humanizing micro-pauses
             if (!this.isImpostor && this.waitTimer <= 0 && Math.random() < 0.003) {
-                this.waitTimer = 20 + Math.random() * 40; // Stop randomly for a brief second
+                this.waitTimer = 20 + Math.random() * 40; 
             }
 
             if (this.waitTimer > 0) { this.waitTimer--; this.isMoving = false; } 
@@ -243,9 +257,7 @@ class Crewmate {
                     }
                 } else {
                     let angle = Math.atan2(dy, dx);
-                    
-                    // Smooth Sine Sway instead of random twitching
-                    let swayAngle = angle + (Math.PI / 2); // Perpendicular to movement
+                    let swayAngle = angle + (Math.PI / 2); 
                     let swayAmount = Math.sin(Date.now() / this.swaySpeed) * this.swayIntensity;
                     
                     let nx = this.x + (Math.cos(angle) * this.speed) + (Math.cos(swayAngle) * swayAmount);
@@ -262,7 +274,6 @@ class Crewmate {
 
                     if (!checkCollision(nx, ny, drawSize)) {
                         this.x = nx; this.y = ny; this.isMoving = true;
-                        // Base the flip purely on intended angle, ignoring sway to prevent moonwalking
                         if (Math.abs(Math.cos(angle)) > 0.1) {
                             this.lastDir = (Math.cos(angle) > 0) ? 'right' : 'left';
                         }
@@ -287,9 +298,9 @@ class Crewmate {
             if (this.animTimer > 8) { this.showWalkFrame = !this.showWalkFrame; this.animTimer = 0; }
         } else { this.showWalkFrame = false; }
         
-        if (!this.isPlayer && !lightsOut) {
+        if (!this.isPlayer && !lightsOut && !this.inVent) {
             [player, ...bots].forEach(other => {
-                if (other !== this && !other.isDead && !other.isEjected) {
+                if (other !== this && !other.isDead && !other.isEjected && !other.inVent) {
                     if (Math.hypot(this.x - other.x, this.y - other.y) < 400) {
                         this.memory[other.colorName] = Date.now(); 
                     }
@@ -303,18 +314,37 @@ class Crewmate {
         
         ctx.save();
         ctx.translate(this.x + drawSize/2, this.y + drawSize/2);
+        
+        // Ghostly effect when hiding in vents!
+        if (this.inVent) ctx.globalAlpha = 0.4;
+        
         if (this.lastDir === 'left') ctx.scale(-1, 1);
-        const img = (this.isDead && !this.isCleanedUp) ? deadImg : (this.showWalkFrame ? walkImg : standImg);
-        ctx.drawImage(img, -drawSize/2, -drawSize/2, drawSize, drawSize);
+        
+        // Fixed "Day Zero" Walking Glitch - Pure waddling
+        let yBob = 0;
+        let rotation = 0;
+        if (this.isMoving) {
+            yBob = this.showWalkFrame ? -4 : 0;
+            rotation = this.showWalkFrame ? 0.08 : -0.08;
+            ctx.rotate(rotation);
+            ctx.drawImage(walkImg, -drawSize/2, -drawSize/2 + yBob, drawSize, drawSize);
+        } else {
+            const img = (this.isDead && !this.isCleanedUp) ? deadImg : standImg;
+            ctx.drawImage(img, -drawSize/2, -drawSize/2, drawSize, drawSize);
+        }
+
         ctx.restore();
 
-        ctx.fillStyle = (this.isImpostor && player.isImpostor) ? "#ff4747" : "white";
-        ctx.font = "bold 14px 'Varela Round'";
-        ctx.textAlign = "center";
-        ctx.strokeStyle = "black"; 
-        ctx.lineWidth = 3;
-        ctx.strokeText(this.colorName, this.x + drawSize/2, this.y - 5);
-        ctx.fillText(this.colorName, this.x + drawSize/2, this.y - 5);
+        // Hide nametag inside vent
+        if (!this.inVent || this.isPlayer) {
+            ctx.fillStyle = (this.isImpostor && player.isImpostor) ? "#ff4747" : "white";
+            ctx.font = "bold 14px 'Varela Round'";
+            ctx.textAlign = "center";
+            ctx.strokeStyle = "black"; 
+            ctx.lineWidth = 3;
+            ctx.strokeText(this.colorName, this.x + drawSize/2, this.y - 5);
+            ctx.fillText(this.colorName, this.x + drawSize/2, this.y - 5);
+        }
     }
 }
 
@@ -356,7 +386,7 @@ assignRoles();
 
 // --- UI & SABOTAGE MAP LOGIC ---
 window.toggleSabotageMap = function() {
-    if (gamePaused || player.isDead || !player.isImpostor) return;
+    if (gamePaused || player.isDead || !player.isImpostor || player.inVent) return;
     isSabotageMapOpen = !isSabotageMapOpen;
     document.getElementById('sabotage-layer').style.display = isSabotageMapOpen ? 'flex' : 'none';
 }
@@ -380,6 +410,7 @@ window.triggerSabotage = function(type) {
 let switchStates = [false, false, false, false, false];
 
 window.openLightsTask = function() {
+    if (player.inVent) return;
     gamePaused = true;
     switchStates = [false, false, false, false, false];
     document.querySelectorAll('.switch').forEach(s => s.className = 'switch off');
@@ -422,8 +453,10 @@ window.sendPlayerChat = function() {
 
 function triggerReport(reporter, deadBody) {
     if (gamePaused || gameWon) return; 
-    gamePaused = true; lightsOut = false; visionRadius = 500; 
     
+    if (player.inVent) player.inVent = false; // Kick player out of vent automatically on meeting
+    
+    gamePaused = true; lightsOut = false; visionRadius = 500; 
     isSabotageMapOpen = false;
     document.getElementById('sabotage-layer').style.display = 'none';
     doors.forEach(d => d.isClosed = false); 
@@ -590,6 +623,7 @@ window.addEventListener('keydown', (e) => {
     keys[e.code] = true;
     if (e.code === 'Space') e.preventDefault(); 
     
+    // Developer Menu Hook
     if (e.key && e.key.length === 1) {
         secretBuffer += e.key.toLowerCase();
         if (secretBuffer.length > 6) secretBuffer = secretBuffer.slice(-6);
@@ -602,7 +636,33 @@ window.addEventListener('keydown', (e) => {
     
     if (gamePaused || gameWon || player.isDead || player.isEjected) return; 
 
-    if (e.code === 'KeyF' && player.isImpostor) toggleSabotageMap();
+    if (e.code === 'KeyF' && player.isImpostor && !player.inVent) toggleSabotageMap();
+
+    // VENTING KEY LOGIC
+    if (player.inVent) {
+        if (e.code === 'KeyA') {
+            player.currentVent = (player.currentVent - 1 + vents.length) % vents.length;
+            player.x = vents[player.currentVent].x;
+            player.y = vents[player.currentVent].y;
+        }
+        if (e.code === 'KeyD') {
+            player.currentVent = (player.currentVent + 1) % vents.length;
+            player.x = vents[player.currentVent].x;
+            player.y = vents[player.currentVent].y;
+        }
+        if (e.code === 'KeyV') {
+            player.inVent = false; // Hop out
+        }
+        return; // Block other actions while in vent
+    } else if (e.code === 'KeyV' && player.isImpostor && !lightsOut) {
+        let nearest = vents.findIndex(v => Math.hypot(player.x - v.x, player.y - v.y) < 100);
+        if (nearest !== -1) {
+            player.inVent = true;
+            player.currentVent = nearest;
+            player.x = vents[nearest].x;
+            player.y = vents[nearest].y;
+        }
+    }
 
     if (e.code === 'Space' && !isSabotageMapOpen) {
         let nearPanel = Math.hypot(player.x - (elecPanel.x + elecPanel.w/2), player.y - (elecPanel.y + elecPanel.h/2)) < 150;
@@ -611,7 +671,7 @@ window.addEventListener('keydown', (e) => {
 
     if (e.code === 'KeyE' && player.isImpostor && killCooldown === 0 && !lightsOut && !isSabotageMapOpen) { 
         for (let bot of bots) {
-            if (!bot.isDead && !bot.isEjected && Math.hypot(bot.x - player.x, bot.y - player.y) < 90) { 
+            if (!bot.isDead && !bot.isEjected && !bot.inVent && Math.hypot(bot.x - player.x, bot.y - player.y) < 90) { 
                 bot.isDead = true; bot.killer = player; 
                 killCooldown = 20; checkWinCondition(); break; 
             }
@@ -621,7 +681,6 @@ window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyR' && !isSabotageMapOpen) {
         let bodies = bots.filter(c => c.isDead && !c.isCleanedUp);
         for (let b of bodies) {
-            // Distance expanded to 250 so player can also report from slightly further away
             if (Math.hypot(player.x - b.x, player.y - b.y) < 250) { triggerReport(player, b); break; }
         }
     }
@@ -671,22 +730,33 @@ function gameLoop() {
     }
 
     let nearPanel = Math.hypot(player.x - (elecPanel.x + elecPanel.w/2), player.y - (elecPanel.y + elecPanel.h/2)) < 150;
-    document.getElementById('use-btn').className = (lightsOut && nearPanel && !gamePaused) ? 'action-btn active-use' : 'action-btn';
+    document.getElementById('use-btn').className = (lightsOut && nearPanel && !gamePaused && !player.inVent) ? 'action-btn active-use' : 'action-btn';
 
     if (player.isImpostor) {
         const killBtn = document.getElementById('kill-btn');
         if (killCooldown > 0) {
             killBtn.className = 'action-btn cooldown'; killBtn.innerText = killCooldown;
         } else {
-            let canKill = bots.some(b => !b.isDead && !b.isEjected && Math.hypot(b.x - player.x, b.y - player.y) < 90);
-            killBtn.className = (canKill && !gamePaused && !lightsOut) ? 'action-btn active-kill' : 'action-btn';
+            let canKill = bots.some(b => !b.isDead && !b.isEjected && !b.inVent && Math.hypot(b.x - player.x, b.y - player.y) < 90);
+            killBtn.className = (canKill && !gamePaused && !lightsOut && !player.inVent) ? 'action-btn active-kill' : 'action-btn';
             killBtn.innerText = 'KILL (E)';
         }
+        
+        // Venting Button Logic
+        const ventBtn = document.getElementById('vent-btn');
+        if (ventBtn) {
+            ventBtn.style.display = 'flex';
+            let nearVent = vents.some(v => Math.hypot(player.x - v.x, player.y - v.y) < 100);
+            ventBtn.className = (nearVent || player.inVent) ? 'action-btn active-kill' : 'action-btn';
+            ventBtn.innerText = player.inVent ? 'EXIT (V)' : 'VENT (V)';
+        }
+    } else {
+        const ventBtn = document.getElementById('vent-btn');
+        if (ventBtn) ventBtn.style.display = 'none';
     }
 
-    // Update Report Button to match the new 250px radius
     let canReport = bots.some(b => b.isDead && !b.isCleanedUp && Math.hypot(player.x - b.x, player.y - b.y) < 250);
-    document.getElementById('report-btn').className = canReport && !gamePaused ? 'action-btn active-report' : 'action-btn';
+    document.getElementById('report-btn').className = (canReport && !gamePaused && !player.inVent) ? 'action-btn active-report' : 'action-btn';
 
     if (isSabotageMapOpen && player.isImpostor) {
         document.getElementById('sabo-lights').className = (globalSabotageCooldown > 0 || lightsOut) ? 'sabo-icon lights-icon cooldown' : 'sabo-icon lights-icon';
@@ -699,10 +769,9 @@ function gameLoop() {
         });
     }
 
-    // Expanded Report Radius Logic (250 pixels instead of 100)
-    if (!gamePaused && !gameWon && !lightsOut) {
+    if (!gamePaused && !gameWon && !lightsOut && !player.inVent) {
         bots.forEach(bot => {
-            if (!bot.isDead && !bot.isEjected) {
+            if (!bot.isDead && !bot.isEjected && !bot.inVent) {
                 bots.filter(c => c.isDead && !c.isCleanedUp).forEach(body => {
                     if (Math.hypot(bot.x - body.x, bot.y - body.y) < 250) triggerReport(bot, body);
                 });
@@ -716,6 +785,22 @@ function gameLoop() {
     ctx.translate(camX, camY);
 
     ctx.fillStyle = "#2a2a2a"; ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+    
+    // Draw Vents Floor Graphics
+    ctx.fillStyle = "#4a4a4a";
+    ctx.strokeStyle = "#111";
+    ctx.lineWidth = 4;
+    vents.forEach(v => {
+        ctx.fillRect(v.x - 30, v.y - 30, 60, 60);
+        ctx.strokeRect(v.x - 30, v.y - 30, 60, 60);
+        ctx.beginPath();
+        for(let i = -15; i <= 15; i += 10) {
+            ctx.moveTo(v.x - 20, v.y + i);
+            ctx.lineTo(v.x + 20, v.y + i);
+        }
+        ctx.stroke();
+    });
+
     ctx.fillStyle = "#4a5a6a"; walls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
 
     doors.forEach(d => {
@@ -749,8 +834,18 @@ function gameLoop() {
         grad.addColorStop(0, 'rgba(0,0,0,0)'); grad.addColorStop(1, 'rgba(0,0,0,0.98)');
         ctx.fillStyle = grad; ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
+    
+    // UI Notification for Vent Navigation
+    if (player.inVent && !gamePaused && !gameWon) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+        ctx.fillRect(0, 0, canvas.width, 80);
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 24px 'Varela Round'";
+        ctx.textAlign = "center";
+        ctx.fillText("IN VENT - Press A or D to move, V to exit", canvas.width/2, 45);
+    }
 
-    if (lightsOut && !gamePaused && !gameWon) drawNavigationArrow();
+    if (lightsOut && !gamePaused && !gameWon && !player.inVent) drawNavigationArrow();
 
     requestAnimationFrame(gameLoop);
 }
