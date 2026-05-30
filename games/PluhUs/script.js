@@ -11,6 +11,32 @@ const drawSize = 60;
 let gamePaused = false; 
 let gameWon = false; 
 
+// --- DYNAMIC VENT UI INJECTION (Clickable Arrows) ---
+const ventUIStyle = document.createElement('style');
+ventUIStyle.innerHTML = `
+    .vent-arrow {
+        background: none; border: none; color: rgba(255,255,255,0.5); 
+        font-size: 80px; cursor: pointer; text-shadow: 0 0 15px #000;
+        pointer-events: auto; transition: transform 0.1s, color 0.1s;
+        padding: 0 40px;
+    }
+    .vent-arrow:hover { color: rgba(255,255,255,1); transform: scale(1.2); }
+    .vent-arrow:active { transform: scale(0.9); }
+`;
+document.head.appendChild(ventUIStyle);
+
+const ventUI = document.createElement('div');
+ventUI.id = 'vent-ui';
+ventUI.style.cssText = 'display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 400px; justify-content: space-between; z-index: 1000; pointer-events: none;';
+ventUI.innerHTML = `
+    <button id="vent-left" class="vent-arrow">◀</button>
+    <button id="vent-right" class="vent-arrow">▶</button>
+`;
+document.body.appendChild(ventUI);
+
+document.getElementById('vent-left').onclick = () => window.navigateVent(-1);
+document.getElementById('vent-right').onclick = () => window.navigateVent(1);
+
 // --- DEV MENU SYSTEM ---
 window.devVignetteEnabled = true;
 let secretBuffer = "";
@@ -105,7 +131,6 @@ function getTintedSprite(img, suitHex) {
     let tCtx = tCanvas.getContext('2d');
     tCtx.drawImage(img, 0, 0, drawSize, drawSize);
 
-    // Convert hex to RGB
     const suitRgb = parseInt(suitHex.slice(1), 16);
     const rTarget = (suitRgb >> 16) & 255;
     const gTarget = (suitRgb >> 8) & 255;
@@ -116,16 +141,12 @@ function getTintedSprite(img, suitHex) {
 
     for (let i = 0; i < data.length; i += 4) {
         let r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
-        if (a === 0) continue; // Skip transparent background
+        if (a === 0) continue; 
 
-        // Identify grayscale pixels (body & backpack) while ignoring blue visors
         let isGrayscale = Math.abs(r - g) < 20 && Math.abs(g - b) < 20 && Math.abs(r - b) < 20;
-        // Ignore pure black outlines
         let isNotBlack = r > 40 || g > 40 || b > 40; 
 
         if (isGrayscale && isNotBlack) {
-            // Calculate brightness. White (255) = 1.0, Gray (128) = 0.5. 
-            // This perfectly shades the backpack while coloring the body!
             let brightness = r / 255; 
             data[i] = rTarget * brightness;
             data[i+1] = gTarget * brightness;
@@ -211,6 +232,8 @@ class Crewmate {
         
         this.inVent = false;
         this.currentVent = -1;
+        this.ventTargetX = x;
+        this.ventTargetY = y;
         this.stuckTimer = 0; 
 
         this.isMoving = false;
@@ -227,8 +250,20 @@ class Crewmate {
             return; 
         }
         
+        // --- VENT EASE-OUT CAMERA SLIDE ---
         if (this.inVent) {
             this.isMoving = false;
+            let dx = this.ventTargetX - this.x;
+            let dy = this.ventTargetY - this.y;
+            
+            // Linear Interpolation (Lerp) for smooth sliding
+            if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+                this.x += dx * 0.08; 
+                this.y += dy * 0.08;
+            } else {
+                this.x = this.ventTargetX;
+                this.y = this.ventTargetY;
+            }
             return;
         }
 
@@ -382,7 +417,6 @@ class Crewmate {
     draw(ctx) {
         if (this.isEjected) return; 
 
-        // Generate colored sprites safely once images are fully confirmed loaded!
         if (standImg.complete && standImg.naturalWidth > 0 && !this.tintedStand) {
             this.tintedStand = getTintedSprite(standImg, this.colorHex);
         }
@@ -525,7 +559,9 @@ window.doVent = () => {
         if(nearest !== -1) { 
             player.inVent = true; 
             player.currentVent = nearest; 
-            player.x = vents[nearest].x;
+            player.ventTargetX = vents[nearest].x;
+            player.ventTargetY = vents[nearest].y;
+            player.x = vents[nearest].x; 
             player.y = vents[nearest].y;
         }
     }
@@ -534,8 +570,8 @@ window.doVent = () => {
 window.navigateVent = (dir) => {
     if(!player.inVent) return;
     player.currentVent = (player.currentVent + dir + vents.length) % vents.length;
-    player.x = vents[player.currentVent].x;
-    player.y = vents[player.currentVent].y;
+    player.ventTargetX = vents[player.currentVent].x;
+    player.ventTargetY = vents[player.currentVent].y;
 };
 
 window.doKill = () => {
@@ -943,6 +979,12 @@ function gameLoop() {
             }
         });
     }
+    
+    // TOGGLE DYNAMIC VENT ARROWS
+    const ventUIEl = document.getElementById('vent-ui');
+    if (ventUIEl) {
+        ventUIEl.style.display = (player.inVent && !gamePaused && !gameWon) ? 'flex' : 'none';
+    }
 
     ctx.save();
     let camX = canvas.width / 2 - player.x - drawSize / 2;
@@ -1046,15 +1088,6 @@ function gameLoop() {
         let grad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, visionRadius * 0.3, canvas.width/2, canvas.height/2, visionRadius);
         grad.addColorStop(0, 'rgba(0,0,0,0)'); grad.addColorStop(1, 'rgba(0,0,0,0.98)');
         ctx.fillStyle = grad; ctx.fillRect(0, 0, canvas.width, canvas.height);
-    }
-    
-    if (player.inVent && !gamePaused && !gameWon) {
-        ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
-        ctx.fillRect(0, 0, canvas.width, 80);
-        ctx.fillStyle = "#fff";
-        ctx.font = "bold 24px 'Varela Round'";
-        ctx.textAlign = "center";
-        ctx.fillText("IN VENT - Press A or D to crawl, V to exit", canvas.width/2, 45);
     }
 
     if (lightsOut && !gamePaused && !gameWon && !player.inVent) drawNavigationArrow();
