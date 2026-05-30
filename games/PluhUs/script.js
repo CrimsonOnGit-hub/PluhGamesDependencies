@@ -146,9 +146,12 @@ class Crewmate {
         this.finalOffsetY = 0;
 
         this.isMoving = false; this.animTimer = 0; this.showWalkFrame = false;
-        this.wobbleX = 0; this.wobbleY = 0;
         this.lastDir = 'right';
         this.memory = {}; 
+        
+        // Randomization for unique bot sway
+        this.swaySpeed = 200 + Math.random() * 200;
+        this.swayIntensity = 0.5 + Math.random() * 0.8;
     }
 
     update() {
@@ -163,6 +166,7 @@ class Crewmate {
             if (keys['KeyD']) { nx += this.speed; this.isMoving = true; this.lastDir = 'right'; }
             if (!checkCollision(nx, ny, drawSize)) { this.x = nx; this.y = ny; }
         } else {
+            // --- AI IMPOSTOR LOGIC ---
             if (this.isImpostor) {
                 if (this.internalKillCooldown > 0) this.internalKillCooldown--;
                 if (this.internalKillCooldown <= 0) {
@@ -187,7 +191,10 @@ class Crewmate {
                                 let ny = this.y + Math.sin(angle) * this.speed;
                                 if (!checkCollision(nx, ny, drawSize)) {
                                     this.x = nx; this.y = ny; this.isMoving = true;
-                                    this.lastDir = (Math.cos(angle) > 0) ? 'right' : 'left';
+                                    // Smooth flip to stop moonwalking
+                                    if (Math.abs(Math.cos(angle)) > 0.1) {
+                                        this.lastDir = (Math.cos(angle) > 0) ? 'right' : 'left';
+                                    }
                                 }
                                 return; 
                             }
@@ -196,6 +203,7 @@ class Crewmate {
                 }
             }
             
+            // --- PATHFINDING & WOBBLE ---
             if (lightsOut && !this.goingToFixLights && !this.isImpostor) {
                 this.goingToFixLights = true;
                 let start = getClosestNode(this.x, this.y);
@@ -208,6 +216,11 @@ class Crewmate {
                 this.isMoving = false;
                 if (Math.random() < 0.01) { lightsOut = false; visionRadius = 500; closeTask(); }
                 return;
+            }
+            
+            // Humanizing micro-pauses
+            if (!this.isImpostor && this.waitTimer <= 0 && Math.random() < 0.003) {
+                this.waitTimer = 20 + Math.random() * 40; // Stop randomly for a brief second
             }
 
             if (this.waitTimer > 0) { this.waitTimer--; this.isMoving = false; } 
@@ -229,11 +242,14 @@ class Crewmate {
                         this.waitTimer = 100 + Math.random() * 200; 
                     }
                 } else {
-                    if (Math.random() < 0.05) { this.wobbleX = (Math.random() - 0.5) * 2; this.wobbleY = (Math.random() - 0.5) * 2; }
                     let angle = Math.atan2(dy, dx);
                     
-                    let nx = this.x + (Math.cos(angle) * this.speed) + this.wobbleX;
-                    let ny = this.y + (Math.sin(angle) * this.speed) + this.wobbleY;
+                    // Smooth Sine Sway instead of random twitching
+                    let swayAngle = angle + (Math.PI / 2); // Perpendicular to movement
+                    let swayAmount = Math.sin(Date.now() / this.swaySpeed) * this.swayIntensity;
+                    
+                    let nx = this.x + (Math.cos(angle) * this.speed) + (Math.cos(swayAngle) * swayAmount);
+                    let ny = this.y + (Math.sin(angle) * this.speed) + (Math.sin(swayAngle) * swayAmount);
                     
                     let sepX = 0; let sepY = 0;
                     [player, ...bots].forEach(other => {
@@ -246,7 +262,10 @@ class Crewmate {
 
                     if (!checkCollision(nx, ny, drawSize)) {
                         this.x = nx; this.y = ny; this.isMoving = true;
-                        this.lastDir = (nx > this.x) ? 'right' : 'left';
+                        // Base the flip purely on intended angle, ignoring sway to prevent moonwalking
+                        if (Math.abs(Math.cos(angle)) > 0.1) {
+                            this.lastDir = (Math.cos(angle) > 0) ? 'right' : 'left';
+                        }
                     } else {
                         if (!checkCollision(nx, this.y, drawSize)) { this.x = nx; this.isMoving = true; }
                         else if (!checkCollision(this.x, ny, drawSize)) { this.y = ny; this.isMoving = true; }
@@ -571,7 +590,6 @@ window.addEventListener('keydown', (e) => {
     keys[e.code] = true;
     if (e.code === 'Space') e.preventDefault(); 
     
-    // --- DEV MENU SECRET CODE ---
     if (e.key && e.key.length === 1) {
         secretBuffer += e.key.toLowerCase();
         if (secretBuffer.length > 6) secretBuffer = secretBuffer.slice(-6);
@@ -603,7 +621,8 @@ window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyR' && !isSabotageMapOpen) {
         let bodies = bots.filter(c => c.isDead && !c.isCleanedUp);
         for (let b of bodies) {
-            if (Math.hypot(player.x - b.x, player.y - b.y) < 120) { triggerReport(player, b); break; }
+            // Distance expanded to 250 so player can also report from slightly further away
+            if (Math.hypot(player.x - b.x, player.y - b.y) < 250) { triggerReport(player, b); break; }
         }
     }
 });
@@ -665,7 +684,8 @@ function gameLoop() {
         }
     }
 
-    let canReport = bots.some(b => b.isDead && !b.isCleanedUp && Math.hypot(player.x - b.x, player.y - b.y) < 120);
+    // Update Report Button to match the new 250px radius
+    let canReport = bots.some(b => b.isDead && !b.isCleanedUp && Math.hypot(player.x - b.x, player.y - b.y) < 250);
     document.getElementById('report-btn').className = canReport && !gamePaused ? 'action-btn active-report' : 'action-btn';
 
     if (isSabotageMapOpen && player.isImpostor) {
@@ -679,11 +699,12 @@ function gameLoop() {
         });
     }
 
+    // Expanded Report Radius Logic (250 pixels instead of 100)
     if (!gamePaused && !gameWon && !lightsOut) {
         bots.forEach(bot => {
             if (!bot.isDead && !bot.isEjected) {
                 bots.filter(c => c.isDead && !c.isCleanedUp).forEach(body => {
-                    if (Math.hypot(bot.x - body.x, bot.y - body.y) < 100) triggerReport(bot, body);
+                    if (Math.hypot(bot.x - body.x, bot.y - body.y) < 250) triggerReport(bot, body);
                 });
             }
         });
@@ -723,7 +744,6 @@ function gameLoop() {
 
     ctx.restore();
 
-    // --- DEV MENU: VIGNETTE TOGGLE LOGIC ---
     if (window.devVignetteEnabled && !gamePaused && !gameWon) {
         let grad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, visionRadius * 0.3, canvas.width/2, canvas.height/2, visionRadius);
         grad.addColorStop(0, 'rgba(0,0,0,0)'); grad.addColorStop(1, 'rgba(0,0,0,0.98)');
