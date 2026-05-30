@@ -11,32 +11,6 @@ const drawSize = 60;
 let gamePaused = false; 
 let gameWon = false; 
 
-// --- DYNAMIC VENT UI INJECTION (Clickable Arrows) ---
-const ventUIStyle = document.createElement('style');
-ventUIStyle.innerHTML = `
-    .vent-arrow {
-        background: none; border: none; color: rgba(255,255,255,0.5); 
-        font-size: 80px; cursor: pointer; text-shadow: 0 0 15px #000;
-        pointer-events: auto; transition: transform 0.1s, color 0.1s;
-        padding: 0 40px;
-    }
-    .vent-arrow:hover { color: rgba(255,255,255,1); transform: scale(1.2); }
-    .vent-arrow:active { transform: scale(0.9); }
-`;
-document.head.appendChild(ventUIStyle);
-
-const ventUI = document.createElement('div');
-ventUI.id = 'vent-ui';
-ventUI.style.cssText = 'display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 400px; justify-content: space-between; z-index: 1000; pointer-events: none;';
-ventUI.innerHTML = `
-    <button id="vent-left" class="vent-arrow">◀</button>
-    <button id="vent-right" class="vent-arrow">▶</button>
-`;
-document.body.appendChild(ventUI);
-
-document.getElementById('vent-left').onclick = () => window.navigateVent(-1);
-document.getElementById('vent-right').onclick = () => window.navigateVent(1);
-
 // --- DEV MENU SYSTEM ---
 window.devVignetteEnabled = true;
 let secretBuffer = "";
@@ -256,7 +230,6 @@ class Crewmate {
             let dx = this.ventTargetX - this.x;
             let dy = this.ventTargetY - this.y;
             
-            // Linear Interpolation (Lerp) for smooth sliding
             if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
                 this.x += dx * 0.08; 
                 this.y += dy * 0.08;
@@ -401,16 +374,6 @@ class Crewmate {
                 this.path = pathIds;
                 this.targetNode = this.path.length > 0 ? waypoints[this.path[0]] : waypoints[target];
             }
-        }
-        
-        if (!this.isPlayer && !lightsOut && !this.inVent) {
-            [player, ...bots].forEach(other => {
-                if (other !== this && !other.isDead && !other.isEjected && !other.inVent) {
-                    if (Math.hypot(this.x - other.x, this.y - other.y) < 400) {
-                        this.memory[other.colorName] = Date.now(); 
-                    }
-                }
-            });
         }
     }
 
@@ -649,8 +612,8 @@ function addChatMsg(author, text) {
     msg.className = 'chat-msg';
     
     const colorMap = {
-        'Red': '#ff4747', 'Blue': '#2572ff', 'Green': '#32cd32', 'Yellow': '#ffd700',
-        'Pink': '#ff69b4', 'Cyan': '#00ffff', 'Black': '#444444', 'Orange': '#ff8c00'
+        'Red': '#ff0000', 'Blue': '#1e90ff', 'Green': '#32cd32', 'Yellow': '#ffd700',
+        'Pink': '#ff69b4', 'Cyan': '#00ffff', 'Black': '#666666', 'Orange': '#ff8c00'
     };
     let hex = colorMap[author] || '#ffffff';
     if(author === "SYSTEM") hex = "#0f0";
@@ -671,7 +634,6 @@ window.sendPlayerChat = function() {
 
 function triggerReport(reporter, deadBody) {
     if (gamePaused || gameWon) return; 
-    
     if (player.inVent) player.inVent = false; 
     
     gamePaused = true; lightsOut = false; visionRadius = 500; 
@@ -680,8 +642,8 @@ function triggerReport(reporter, deadBody) {
     doors.forEach(d => d.isClosed = false); 
 
     let alivePlayers = [player, ...bots].filter(c => !c.isDead && !c.isEjected);
-    let suspect = alivePlayers.find(p => p !== reporter && Math.hypot(p.x - deadBody.x, p.y - deadBody.y) < 400);
-    if (!suspect) suspect = { colorName: "Nobody" }; 
+    let accusedName = "Nobody";
+    let mainAccuser = null;
 
     document.getElementById('voting-title').innerText = "Emergency Meeting";
     document.getElementById('chat-box').innerHTML = ''; 
@@ -703,83 +665,41 @@ function triggerReport(reporter, deadBody) {
     setTimeout(() => { if (!reporter.isPlayer) addChatMsg(reporter.colorName, `Where? I found a body.`); }, delay);
     delay += 1000;
 
-    alivePlayers.forEach(b => {
-        if (!b.isPlayer && b !== reporter && Math.random() > 0.3) {
-            let phrases = ["Where?", "Who?", "I was doing tasks.", "skip?", "any proof?", "What happened?"];
-            let phrase = phrases[Math.floor(Math.random() * phrases.length)];
-            setTimeout(() => addChatMsg(b.colorName, phrase), delay);
-            delay += Math.random() * 800 + 400; 
-        }
-    });
-
-    delay += 1000;
-
-    let selfReportAccusers = 0;
-    let isSelfReport = (reporter === deadBody.killer);
-    let mainAccuser = null;
-
+    // ONLY bots that actually saw the kill will accuse! No more fake guesswork.
     alivePlayers.forEach(b => {
         if (!b.isPlayer && b.memory.sawKill && b.memory.sawKill.victim === deadBody.colorName) {
-            suspect = [player, ...bots].find(p => p.colorName === b.memory.sawKill.killer) || suspect;
+            accusedName = b.memory.sawKill.killer;
             if (!mainAccuser) {
                 mainAccuser = b.colorName;
-                setTimeout(() => { addChatMsg(b.colorName, `${suspect.colorName} killed ${deadBody.colorName} in front of me!`); }, delay);
+                setTimeout(() => { addChatMsg(b.colorName, `${accusedName} killed ${deadBody.colorName} in front of me!`); }, delay);
             } else {
-                setTimeout(() => { addChatMsg(b.colorName, `Yeah, I literally saw ${suspect.colorName} kill them!`); }, delay);
+                setTimeout(() => { addChatMsg(b.colorName, `Yeah, I literally saw ${accusedName} kill them!`); }, delay);
             }
             delay += 1000;
         }
     });
 
     if (!mainAccuser) {
-        if (isSelfReport) {
-            alivePlayers.forEach(b => {
-                if (!b.isPlayer && b.memory[reporter.colorName] > Date.now() - 15000 && b.memory[deadBody.colorName] > Date.now() - 15000) {
-                    selfReportAccusers++;
-                    if (!mainAccuser) {
-                        mainAccuser = b.colorName; 
-                        setTimeout(() => { addChatMsg(b.colorName, `SELF REPORT! I saw ${reporter.colorName} with them!`); }, delay);
-                    } else {
-                        let currentAccuser = mainAccuser; 
-                        setTimeout(() => {
-                            let agreements = [`Yeah, i agree, ${currentAccuser}`, `listen to ${currentAccuser}`, `${reporter.colorName} is pretty sus`];
-                            addChatMsg(b.colorName, agreements[Math.floor(Math.random() * agreements.length)]);
-                        }, delay);
-                    }
-                    delay += 800;
-                }
-            });
-        } else {
-            if (suspect.colorName === "Nobody") {
-                let randomAccuser = alivePlayers.find(p => !p.isPlayer && p !== reporter);
-                if (randomAccuser && Math.random() > 0.4) {
-                    let potentialTargets = alivePlayers.filter(p => p !== randomAccuser && p !== reporter);
-                    if (potentialTargets.length > 0) {
-                        let randomTarget = potentialTargets[Math.floor(Math.random() * potentialTargets.length)];
-                        setTimeout(() => {
-                            addChatMsg(randomAccuser.colorName, `I didn't see the body, but ${randomTarget.colorName} is faking tasks.`);
-                            suspect = randomTarget; mainAccuser = randomAccuser.colorName;
-                        }, delay);
-                        delay += 1000;
-                    }
-                }
+        // Nobody saw it. Just skip and wonder.
+        alivePlayers.forEach(b => {
+            if (!b.isPlayer && b !== reporter && Math.random() > 0.4) {
+                let phrases = ["Where?", "Who?", "I didn't see anything.", "skip?", "any proof?", "I was doing tasks."];
+                let phrase = phrases[Math.floor(Math.random() * phrases.length)];
+                setTimeout(() => addChatMsg(b.colorName, phrase), delay);
+                delay += Math.random() * 800 + 400; 
             }
-            alivePlayers.forEach(b => {
-                if (!b.isPlayer && suspect.colorName !== "Nobody" && suspect.colorName !== b.colorName) {
-                    if (!mainAccuser) {
-                        mainAccuser = b.colorName; 
-                        setTimeout(() => { addChatMsg(b.colorName, `I saw ${suspect.colorName} go with ${deadBody.colorName}! ${suspect.colorName} is sus!`); }, delay);
-                    } else {
-                        let currentAccuser = mainAccuser; 
-                        setTimeout(() => {
-                            let agreements = [`Yeah, i agree, ${currentAccuser}`, `listen to ${currentAccuser}`, `${suspect.colorName} is pretty sus`];
-                            addChatMsg(b.colorName, agreements[Math.floor(Math.random() * agreements.length)]);
-                        }, delay);
-                    }
-                    delay += 1000;
-                }
-            });
-        }
+        });
+    } else {
+        // Bots who didn't see it agree with the confirmed witness
+        alivePlayers.forEach(b => {
+            if (!b.isPlayer && b.colorName !== mainAccuser && b.colorName !== accusedName && (!b.memory.sawKill || b.memory.sawKill.victim !== deadBody.colorName) && Math.random() > 0.4) {
+                setTimeout(() => {
+                    let phrases = [`Voting ${accusedName}.`, `If you say so, ${mainAccuser}.`, `Okay, voting ${accusedName}.`];
+                    addChatMsg(b.colorName, phrases[Math.floor(Math.random() * phrases.length)]);
+                }, delay);
+                delay += 800;
+            }
+        });
     }
 
     setTimeout(() => {
@@ -788,17 +708,17 @@ function triggerReport(reporter, deadBody) {
             let btn = document.createElement('button');
             btn.className = 'vote-btn'; btn.innerText = `Vote ${p.colorName}`;
             btn.style.borderColor = p.colorHex;
-            btn.onclick = () => castVote(p, suspect, alivePlayers, selfReportAccusers, reporter);
+            btn.onclick = () => castVote(p, accusedName, alivePlayers);
             btnContainer.appendChild(btn);
         });
         let skipBtn = document.createElement('button');
         skipBtn.className = 'vote-btn skip-btn'; skipBtn.innerText = "Skip Vote";
-        skipBtn.onclick = () => castVote(null, suspect, alivePlayers, selfReportAccusers, reporter);
+        skipBtn.onclick = () => castVote(null, accusedName, alivePlayers);
         btnContainer.appendChild(skipBtn);
     }, delay);
 }
 
-function castVote(playerChoice, suspect, alivePlayers, selfReportAccusers, reporter) {
+function castVote(playerChoice, accusedName, alivePlayers) {
     let voteLedger = { "Skip": [] };
     alivePlayers.forEach(p => voteLedger[p.colorName] = []);
 
@@ -808,12 +728,8 @@ function castVote(playerChoice, suspect, alivePlayers, selfReportAccusers, repor
     alivePlayers.forEach(p => {
         if (!p.isPlayer) {
             let target = "Skip";
-            if (p.memory.sawKill && p.memory.sawKill.victim === (bots.find(b => b.killer) || {}).colorName) {
-                 target = p.memory.sawKill.killer;
-            } else if (selfReportAccusers >= 3) {
-                 target = reporter.colorName; 
-            } else if (suspect.colorName !== "Nobody") {
-                 target = suspect.colorName;
+            if (accusedName !== "Nobody" && p.colorName !== accusedName) {
+                 target = accusedName; 
             }
             voteLedger[target].push(p);
         }
@@ -993,7 +909,7 @@ function gameLoop() {
 
     ctx.fillStyle = "#2a2a2a"; ctx.fillRect(0, 0, WORLD_W, WORLD_H);
     
-    // 1. Reactor Core Room (Left)
+    // 1. Reactor Core Room
     ctx.fillStyle = "#1e293b"; ctx.beginPath(); ctx.arc(250, 300, 130, 0, Math.PI*2); ctx.fill();
     ctx.lineWidth = 2; ctx.strokeStyle = "#334155";
     for(let i=130; i<=370; i+=25) { 
@@ -1006,7 +922,7 @@ function gameLoop() {
     ctx.strokeStyle = "#0284c7"; ctx.lineWidth = 12; ctx.beginPath(); ctx.arc(250, 300, 85, 0, Math.PI*2); ctx.stroke();
     ctx.fillStyle = "#64748b"; ctx.fillRect(242, 170, 16, 45); ctx.fillRect(242, 385, 16, 45); ctx.fillRect(130, 292, 45, 16); ctx.fillRect(325, 292, 45, 16);
 
-    // 2. Admin Command Room (Right)
+    // 2. Admin Command Room
     ctx.fillStyle = "#1e293b"; ctx.fillRect(1130, 480, 290, 160);
     ctx.fillStyle = "#0f172a"; ctx.fillRect(1145, 495, 260, 130);
     ctx.strokeStyle = "#334155"; ctx.lineWidth = 6; ctx.strokeRect(1145, 495, 260, 130);
@@ -1020,12 +936,12 @@ function gameLoop() {
         ctx.beginPath(); ctx.ellipse(1275, 560, 45 - Math.cos(t)*6, 22 - Math.cos(t)*3, 0, 0, Math.PI*2); ctx.stroke();
     }
 
-    // 3. Storage Supply Room (Bottom)
+    // 3. Storage Supply Room
     drawCrate(840, 1310, 75);
     drawCrate(930, 1280, 95);
     drawCrate(885, 1375, 85);
 
-    // 4. Electrical Control Room (Top)
+    // 4. Electrical Control Room
     ctx.save();
     ctx.beginPath(); ctx.rect(850, 250, 200, 20); ctx.clip();
     ctx.fillStyle = "#eab308"; ctx.fillRect(850, 250, 200, 20);
