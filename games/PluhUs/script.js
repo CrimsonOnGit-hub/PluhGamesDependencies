@@ -11,6 +11,25 @@ const drawSize = 60;
 let gamePaused = false; 
 let gameWon = false; 
 
+// --- DEV MENU SYSTEM ---
+window.devVignetteEnabled = true;
+let secretBuffer = "";
+
+const devMenu = document.createElement('div');
+devMenu.id = 'dev-menu';
+devMenu.style.cssText = 'display: none; position: absolute; top: 70px; right: 20px; background: rgba(0,0,0,0.9); border: 2px solid #0f0; color: #0f0; font-family: monospace; padding: 15px; z-index: 9999; border-radius: 5px; box-shadow: 0 0 15px rgba(0,255,0,0.3);';
+devMenu.innerHTML = `
+    <h3 style="margin: 0 0 10px 0; border-bottom: 1px solid #0f0; padding-bottom: 5px;">🔧 DEV MENU</h3>
+    <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
+        <input type="checkbox" id="dev-vignette" checked onchange="window.devVignetteEnabled = this.checked" style="accent-color: #0f0;"> 
+        Enable Vignette (Fog)
+    </label>
+    <div style="margin-top: 15px; text-align: right;">
+        <button onclick="document.getElementById('dev-menu').style.display='none'" style="background: #111; color: #0f0; border: 1px solid #0f0; cursor: pointer; padding: 5px 15px; border-radius: 3px;">Close</button>
+    </div>
+`;
+document.body.appendChild(devMenu);
+
 // --- GAME MODE LOGIC ---
 let gameMode = localStorage.getItem('pluhus_mode') || 'random';
 
@@ -56,7 +75,6 @@ const doors = [
 
 const elecPanel = { x: 950, y: 50, w: 100, h: 60 };
 
-// Improved Bounding Box Collision
 function checkCollision(nx, ny, size) {
     let padding = 5;
     let left = nx + padding; let right = nx + size - padding;
@@ -145,7 +163,6 @@ class Crewmate {
             if (keys['KeyD']) { nx += this.speed; this.isMoving = true; this.lastDir = 'right'; }
             if (!checkCollision(nx, ny, drawSize)) { this.x = nx; this.y = ny; }
         } else {
-            // --- AI IMPOSTOR LOGIC ---
             if (this.isImpostor) {
                 if (this.internalKillCooldown > 0) this.internalKillCooldown--;
                 if (this.internalKillCooldown <= 0) {
@@ -179,7 +196,6 @@ class Crewmate {
                 }
             }
             
-            // --- PATHFINDING & WOBBLE ---
             if (lightsOut && !this.goingToFixLights && !this.isImpostor) {
                 this.goingToFixLights = true;
                 let start = getClosestNode(this.x, this.y);
@@ -219,7 +235,6 @@ class Crewmate {
                     let nx = this.x + (Math.cos(angle) * this.speed) + this.wobbleX;
                     let ny = this.y + (Math.sin(angle) * this.speed) + this.wobbleY;
                     
-                    // Separation Force
                     let sepX = 0; let sepY = 0;
                     [player, ...bots].forEach(other => {
                         if (other !== this && !other.isDead && Math.hypot(this.x - other.x, this.y - other.y) < 40) {
@@ -233,7 +248,6 @@ class Crewmate {
                         this.x = nx; this.y = ny; this.isMoving = true;
                         this.lastDir = (nx > this.x) ? 'right' : 'left';
                     } else {
-                        // Wall Sliding
                         if (!checkCollision(nx, this.y, drawSize)) { this.x = nx; this.isMoving = true; }
                         else if (!checkCollision(this.x, ny, drawSize)) { this.y = ny; this.isMoving = true; }
                         else { this.isMoving = false; if (Math.random() < 0.01) this.targetNode = null; }
@@ -254,7 +268,6 @@ class Crewmate {
             if (this.animTimer > 8) { this.showWalkFrame = !this.showWalkFrame; this.animTimer = 0; }
         } else { this.showWalkFrame = false; }
         
-        // Memory Update
         if (!this.isPlayer && !lightsOut) {
             [player, ...bots].forEach(other => {
                 if (other !== this && !other.isDead && !other.isEjected) {
@@ -269,7 +282,6 @@ class Crewmate {
     draw(ctx) {
         if (this.isEjected) return; 
         
-        // Sprite Flipping
         ctx.save();
         ctx.translate(this.x + drawSize/2, this.y + drawSize/2);
         if (this.lastDir === 'left') ctx.scale(-1, 1);
@@ -277,7 +289,6 @@ class Crewmate {
         ctx.drawImage(img, -drawSize/2, -drawSize/2, drawSize, drawSize);
         ctx.restore();
 
-        // Name Tag Rendering
         ctx.fillStyle = (this.isImpostor && player.isImpostor) ? "#ff4747" : "white";
         ctx.font = "bold 14px 'Varela Round'";
         ctx.textAlign = "center";
@@ -559,6 +570,18 @@ window.addEventListener('keyup', (e) => keys[e.code] = false);
 window.addEventListener('keydown', (e) => {
     keys[e.code] = true;
     if (e.code === 'Space') e.preventDefault(); 
+    
+    // --- DEV MENU SECRET CODE ---
+    if (e.key && e.key.length === 1) {
+        secretBuffer += e.key.toLowerCase();
+        if (secretBuffer.length > 6) secretBuffer = secretBuffer.slice(-6);
+        if (secretBuffer === 'pluhus') {
+            const dm = document.getElementById('dev-menu');
+            dm.style.display = (dm.style.display === 'none') ? 'block' : 'none';
+            secretBuffer = ''; 
+        }
+    }
+    
     if (gamePaused || gameWon || player.isDead || player.isEjected) return; 
 
     if (e.code === 'KeyF' && player.isImpostor) toggleSabotageMap();
@@ -590,6 +613,7 @@ function drawNavigationArrow() {
     let targetY = elecPanel.y + elecPanel.h / 2;
     let playerCenterX = player.x + drawSize / 2;
     let playerCenterY = player.y + drawSize / 2;
+
     let angle = Math.atan2(targetY - playerCenterY, targetX - playerCenterX);
     let arrowRadius = drawSize + 30;
 
@@ -699,7 +723,8 @@ function gameLoop() {
 
     ctx.restore();
 
-    if (!gamePaused && !gameWon) {
+    // --- DEV MENU: VIGNETTE TOGGLE LOGIC ---
+    if (window.devVignetteEnabled && !gamePaused && !gameWon) {
         let grad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, visionRadius * 0.3, canvas.width/2, canvas.height/2, visionRadius);
         grad.addColorStop(0, 'rgba(0,0,0,0)'); grad.addColorStop(1, 'rgba(0,0,0,0.98)');
         ctx.fillStyle = grad; ctx.fillRect(0, 0, canvas.width, canvas.height);
