@@ -76,10 +76,10 @@ const doors = [
 const elecPanel = { x: 950, y: 50, w: 100, h: 60 };
 
 const vents = [
-    { x: 150, y: 150 },   
-    { x: 150, y: 1350 },  
-    { x: 1850, y: 150 },  
-    { x: 1850, y: 1350 }  
+    { x: 120, y: 120 },   
+    { x: 120, y: 1380 },  
+    { x: 1880, y: 120 },  
+    { x: 1880, y: 1380 }  
 ];
 
 function checkCollision(nx, ny, size) {
@@ -155,7 +155,7 @@ class Crewmate {
         this.inVent = false;
         this.currentVent = -1;
 
-        this.isMoving = false; this.animTimer = 0; this.showWalkFrame = false;
+        this.isMoving = false;
         this.lastDir = 'right';
         this.memory = {}; 
         
@@ -289,11 +289,6 @@ class Crewmate {
                 this.targetNode = this.path.length > 0 ? waypoints[this.path[0]] : waypoints[target];
             }
         }
-
-        if (this.isMoving) {
-            this.animTimer++;
-            if (this.animTimer > 8) { this.showWalkFrame = !this.showWalkFrame; this.animTimer = 0; }
-        } else { this.showWalkFrame = false; }
         
         if (!this.isPlayer && !lightsOut && !this.inVent) {
             [player, ...bots].forEach(other => {
@@ -316,13 +311,10 @@ class Crewmate {
         
         if (this.lastDir === 'left') ctx.scale(-1, 1);
         
-        let yBob = 0;
-        let rotation = 0;
         if (this.isMoving) {
-            yBob = this.showWalkFrame ? -4 : 0;
-            rotation = this.showWalkFrame ? 0.08 : -0.08;
-            ctx.rotate(rotation);
-            ctx.drawImage(walkImg, -drawSize/2, -drawSize/2 + yBob, drawSize, drawSize);
+            let bob = Math.sin(Date.now() / 100) * 4;
+            ctx.rotate(Math.sin(Date.now() / 100) * 0.1);
+            ctx.drawImage(walkImg, -drawSize/2, -drawSize/2 + bob, drawSize, drawSize);
         } else {
             const img = (this.isDead && !this.isCleanedUp) ? deadImg : standImg;
             ctx.drawImage(img, -drawSize/2, -drawSize/2, drawSize, drawSize);
@@ -378,7 +370,7 @@ function assignRoles() {
 }
 assignRoles();
 
-// --- UI & SABOTAGE MAP LOGIC ---
+// --- CLICKABLE UI & INPUT HANDLERS ---
 window.toggleSabotageMap = function() {
     if (gamePaused || player.isDead || !player.isImpostor || player.inVent) return;
     isSabotageMapOpen = !isSabotageMapOpen;
@@ -401,8 +393,6 @@ window.triggerSabotage = function(type) {
     }
 }
 
-let switchStates = [false, false, false, false, false];
-
 window.openLightsTask = function() {
     if (player.inVent) return;
     gamePaused = true;
@@ -411,6 +401,7 @@ window.openLightsTask = function() {
     document.getElementById('task-layer').style.display = 'flex';
 }
 
+let switchStates = [false, false, false, false, false];
 window.closeTask = function() {
     document.getElementById('task-layer').style.display = 'none';
     gamePaused = false;
@@ -425,6 +416,92 @@ window.toggleSwitch = function(el) {
         setTimeout(() => { lightsOut = false; visionRadius = 500; closeTask(); }, 500);
     }
 }
+
+window.doUse = () => { 
+    if(gamePaused || player.isDead || player.inVent) return;
+    let nearPanel = Math.hypot(player.x - (elecPanel.x + 50), player.y - (elecPanel.y + 30)) < 150;
+    if(lightsOut && nearPanel) openLightsTask();
+};
+
+window.doVent = () => {
+    if(!player.isImpostor || lightsOut) return;
+    if(player.inVent) { 
+        player.inVent = false; 
+    } else {
+        let nearest = vents.findIndex(v => Math.hypot(player.x - v.x, player.y - v.y) < 100);
+        if(nearest !== -1) { 
+            player.inVent = true; 
+            player.currentVent = nearest; 
+            player.x = vents[nearest].x;
+            player.y = vents[nearest].y;
+        }
+    }
+};
+
+window.navigateVent = (dir) => {
+    if(!player.inVent) return;
+    player.currentVent = (player.currentVent + dir + vents.length) % vents.length;
+    player.x = vents[player.currentVent].x;
+    player.y = vents[player.currentVent].y;
+};
+
+window.doKill = () => {
+    if(!player.isImpostor || killCooldown > 0 || player.inVent || gamePaused || lightsOut || isSabotageMapOpen) return;
+    for (let bot of bots) {
+        if (!bot.isDead && !bot.isEjected && !bot.inVent && Math.hypot(bot.x - player.x, bot.y - player.y) < 90) { 
+            bot.isDead = true; bot.killer = player; 
+            killCooldown = 20; checkWinCondition(); break; 
+        }
+    }
+};
+
+window.doReport = () => {
+    if(gamePaused || isSabotageMapOpen) return;
+    let bodies = bots.filter(c => c.isDead && !c.isCleanedUp);
+    for (let b of bodies) {
+        if (Math.hypot(player.x - b.x, player.y - b.y) < 250) { triggerReport(player, b); break; }
+    }
+};
+
+// Hooking DOM buttons to actions
+document.getElementById('use-btn').onclick = window.doUse;
+document.getElementById('kill-btn').onclick = window.doKill;
+document.getElementById('report-btn').onclick = window.doReport;
+let ventBtnEl = document.getElementById('vent-btn');
+if(ventBtnEl) ventBtnEl.onclick = window.doVent;
+
+const keys = {};
+window.addEventListener('keyup', (e) => keys[e.code] = false);
+window.addEventListener('keydown', (e) => {
+    keys[e.code] = true;
+    if (e.code === 'Space') e.preventDefault(); 
+    
+    if (e.key && e.key.length === 1) {
+        secretBuffer += e.key.toLowerCase();
+        if (secretBuffer.length > 6) secretBuffer = secretBuffer.slice(-6);
+        if (secretBuffer === 'pluhus' || secretBuffer === 'chrome') { 
+            const dm = document.getElementById('dev-menu');
+            dm.style.display = (dm.style.display === 'none') ? 'block' : 'none';
+            secretBuffer = ''; 
+        }
+    }
+    
+    if (gamePaused || gameWon || player.isDead || player.isEjected) return; 
+
+    if (e.code === 'KeyF' && player.isImpostor && !player.inVent) toggleSabotageMap();
+
+    if (player.inVent) {
+        if (e.code === 'KeyA') window.navigateVent(-1);
+        if (e.code === 'KeyD') window.navigateVent(1);
+        if (e.code === 'KeyV') window.doVent();
+        return; 
+    } 
+    
+    if (e.code === 'KeyV') window.doVent();
+    if (e.code === 'Space') window.doUse();
+    if (e.code === 'KeyE') window.doKill();
+    if (e.code === 'KeyR') window.doReport();
+});
 
 // --- CHAT & MEETING SYSTEM ---
 function addChatMsg(author, text) {
@@ -562,11 +639,9 @@ function castVote(playerChoice, suspect, alivePlayers, selfReportAccusers, repor
     let voteLedger = { "Skip": [] };
     alivePlayers.forEach(p => voteLedger[p.colorName] = []);
 
-    // Player casts their vote
     let pTarget = playerChoice ? playerChoice.colorName : "Skip";
     voteLedger[pTarget].push(player.colorName);
 
-    // Bots cast their votes
     alivePlayers.forEach(p => {
         if (!p.isPlayer) {
             let target = "Skip";
@@ -583,7 +658,6 @@ function castVote(playerChoice, suspect, alivePlayers, selfReportAccusers, repor
         else if (count === maxVotes) tie = true;
     }
 
-    // Replace voting buttons with Visual Vote Ledger
     document.getElementById('voting-buttons').innerHTML = '';
     let resultsHTML = '<h3 style="color:white; text-align:center; margin-bottom:10px;">Voting Results</h3><div style="display:flex; flex-direction:column; gap:8px;">';
     
@@ -607,7 +681,6 @@ function castVote(playerChoice, suspect, alivePlayers, selfReportAccusers, repor
 
     addChatMsg("SYSTEM", tie || ejectedName === "Skip" ? `Votes tied. Nobody ejected.` : `${ejectedName} was ejected.`);
 
-    // Wait 6 seconds so the player can actually read the results before resuming
     setTimeout(() => {
         document.getElementById('voting-layer').style.display = 'none';
         if (ejectedName && ejectedName !== "Skip" && !tie) {
@@ -637,74 +710,6 @@ function triggerEnd(message, color) {
     document.getElementById('end-screen').style.display = 'flex';
     setTimeout(() => location.reload(), 4000); 
 }
-
-// --- INPUTS & ACTIONS ---
-const keys = {};
-window.addEventListener('keyup', (e) => keys[e.code] = false);
-window.addEventListener('keydown', (e) => {
-    keys[e.code] = true;
-    if (e.code === 'Space') e.preventDefault(); 
-    
-    if (e.key && e.key.length === 1) {
-        secretBuffer += e.key.toLowerCase();
-        if (secretBuffer.length > 6) secretBuffer = secretBuffer.slice(-6);
-        if (secretBuffer === 'pluhus' || secretBuffer === 'chrome') { // Added chrome to dev menu hooks just in case!
-            const dm = document.getElementById('dev-menu');
-            dm.style.display = (dm.style.display === 'none') ? 'block' : 'none';
-            secretBuffer = ''; 
-        }
-    }
-    
-    if (gamePaused || gameWon || player.isDead || player.isEjected) return; 
-
-    if (e.code === 'KeyF' && player.isImpostor && !player.inVent) toggleSabotageMap();
-
-    if (player.inVent) {
-        if (e.code === 'KeyA') {
-            player.currentVent = (player.currentVent - 1 + vents.length) % vents.length;
-            player.x = vents[player.currentVent].x;
-            player.y = vents[player.currentVent].y;
-        }
-        if (e.code === 'KeyD') {
-            player.currentVent = (player.currentVent + 1) % vents.length;
-            player.x = vents[player.currentVent].x;
-            player.y = vents[player.currentVent].y;
-        }
-        if (e.code === 'KeyV') {
-            player.inVent = false; 
-        }
-        return; 
-    } else if (e.code === 'KeyV' && player.isImpostor && !lightsOut) {
-        let nearest = vents.findIndex(v => Math.hypot(player.x - v.x, player.y - v.y) < 100);
-        if (nearest !== -1) {
-            player.inVent = true;
-            player.currentVent = nearest;
-            player.x = vents[nearest].x;
-            player.y = vents[nearest].y;
-        }
-    }
-
-    if (e.code === 'Space' && !isSabotageMapOpen) {
-        let nearPanel = Math.hypot(player.x - (elecPanel.x + elecPanel.w/2), player.y - (elecPanel.y + elecPanel.h/2)) < 150;
-        if (lightsOut && nearPanel) openLightsTask();
-    }
-
-    if (e.code === 'KeyE' && player.isImpostor && killCooldown === 0 && !lightsOut && !isSabotageMapOpen) { 
-        for (let bot of bots) {
-            if (!bot.isDead && !bot.isEjected && !bot.inVent && Math.hypot(bot.x - player.x, bot.y - player.y) < 90) { 
-                bot.isDead = true; bot.killer = player; 
-                killCooldown = 20; checkWinCondition(); break; 
-            }
-        }
-    }
-
-    if (e.code === 'KeyR' && !isSabotageMapOpen) {
-        let bodies = bots.filter(c => c.isDead && !c.isCleanedUp);
-        for (let b of bodies) {
-            if (Math.hypot(player.x - b.x, player.y - b.y) < 250) { triggerReport(player, b); break; }
-        }
-    }
-});
 
 function drawNavigationArrow() {
     let targetX = elecPanel.x + elecPanel.w / 2;
@@ -762,7 +767,7 @@ function gameLoop() {
             killBtn.innerText = 'KILL (E)';
         }
         
-        const ventBtn = document.getElementById('vent-btn');
+        let ventBtn = document.getElementById('vent-btn');
         if (ventBtn) {
             ventBtn.style.display = 'flex';
             let nearVent = vents.some(v => Math.hypot(player.x - v.x, player.y - v.y) < 100);
@@ -770,7 +775,7 @@ function gameLoop() {
             ventBtn.innerText = player.inVent ? 'EXIT (V)' : 'VENT (V)';
         }
     } else {
-        const ventBtn = document.getElementById('vent-btn');
+        let ventBtn = document.getElementById('vent-btn');
         if (ventBtn) ventBtn.style.display = 'none';
     }
 
