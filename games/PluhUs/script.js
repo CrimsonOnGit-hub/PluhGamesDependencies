@@ -57,19 +57,18 @@ function checkCollision(nx, ny, size) {
 }
 
 // --- AI PATHFINDING GRAPH ---
-// Nodes mapping out safe walkable areas and their connecting paths
 const waypoints = [
-    { id: 0, x: 200, y: 300, edges: [2] },         // 0: Reactor Top
-    { id: 1, x: 200, y: 1200, edges: [2] },        // 1: Reactor Bottom
-    { id: 2, x: 300, y: 700, edges: [0, 1, 3] },   // 2: Left of Door 1
-    { id: 3, x: 550, y: 700, edges: [2, 4, 10] },  // 3: Right of Door 1
-    { id: 4, x: 800, y: 700, edges: [3, 5, 6, 10] }, // 4: Center Hall
-    { id: 5, x: 920, y: 200, edges: [4] },         // 5: Electrical Box
-    { id: 6, x: 950, y: 700, edges: [4, 7] },      // 6: Left of Door 2
-    { id: 7, x: 1150, y: 700, edges: [6, 8, 9] },  // 7: Inside Admin
-    { id: 8, x: 1450, y: 500, edges: [7] },        // 8: Admin Top Right
-    { id: 9, x: 1450, y: 900, edges: [7] },        // 9: Admin Bottom Right
-    { id: 10, x: 800, y: 1300, edges: [3, 4] }     // 10: Bottom Center
+    { id: 0, x: 200, y: 300, edges: [2] },         
+    { id: 1, x: 200, y: 1200, edges: [2] },        
+    { id: 2, x: 300, y: 700, edges: [0, 1, 3] },   
+    { id: 3, x: 550, y: 700, edges: [2, 4, 10] },  
+    { id: 4, x: 800, y: 700, edges: [3, 5, 6, 10] }, 
+    { id: 5, x: 920, y: 200, edges: [4] },         
+    { id: 6, x: 950, y: 700, edges: [4, 7] },      
+    { id: 7, x: 1150, y: 700, edges: [6, 8, 9] },  
+    { id: 8, x: 1450, y: 500, edges: [7] },        
+    { id: 9, x: 1450, y: 900, edges: [7] },        
+    { id: 10, x: 800, y: 1300, edges: [3, 4] }     
 ];
 
 function getClosestNode(x, y) {
@@ -81,7 +80,6 @@ function getClosestNode(x, y) {
     return closest;
 }
 
-// Breadth-First Search to map shortest route between nodes
 function getPath(startId, endId) {
     if (startId === endId) return [];
     let queue = [[startId]];
@@ -108,7 +106,6 @@ class Crewmate {
         this.isDead = false; this.isEjected = false; this.isCleanedUp = false; 
         this.killer = null; 
         
-        // Navigation properties
         this.speed = isPlayer ? 5 : 3;
         this.path = [];
         this.targetNode = null;
@@ -131,13 +128,10 @@ class Crewmate {
             if (keys['KeyD']) { nx += this.speed; this.isMoving = true; }
             if (!checkCollision(nx, ny, drawSize)) { this.x = nx; this.y = ny; }
         } else {
-            // --- AI PATHFINDING LOGIC ---
-            
-            // 1. Check Sabotage Interruptions
             if (lightsOut && !this.goingToFixLights) {
                 this.goingToFixLights = true;
                 let start = getClosestNode(this.x, this.y);
-                let pathIds = getPath(start, 5); // Node 5 is Electrical
+                let pathIds = getPath(start, 5); 
                 pathIds.shift();
                 this.path = pathIds;
                 this.targetNode = this.path.length > 0 ? waypoints[this.path[0]] : waypoints[5];
@@ -145,16 +139,14 @@ class Crewmate {
                 this.goingToFixLights = false;
             }
 
-            // 2. Fixing Lights
             if (this.goingToFixLights && Math.hypot(this.x - waypoints[5].x, this.y - waypoints[5].y) < 100) {
                 this.isMoving = false;
-                if (Math.random() < 0.01) { // Random chance to fix per frame
+                if (Math.random() < 0.01) { 
                     lightsOut = false; visionRadius = 500; closeTask();
                 }
                 return;
             }
 
-            // 3. Follow the Route
             if (this.waitTimer > 0) {
                 this.waitTimer--;
                 this.isMoving = false;
@@ -164,12 +156,12 @@ class Crewmate {
                 let dist = Math.hypot(dx, dy);
 
                 if (dist < 10) {
-                    this.path.shift(); // Remove reached node
+                    this.path.shift(); 
                     if (this.path.length > 0) {
-                        this.targetNode = waypoints[this.path[0]]; // Look to next node
+                        this.targetNode = waypoints[this.path[0]]; 
                     } else {
-                        this.targetNode = null; // Reached final destination
-                        this.waitTimer = 30 + Math.random() * 90; // Stand still to "do task"
+                        this.targetNode = null; 
+                        this.waitTimer = 30 + Math.random() * 90; 
                     }
                 } else {
                     let angle = Math.atan2(dy, dx);
@@ -179,11 +171,10 @@ class Crewmate {
                     if (!checkCollision(nx, ny, drawSize)) {
                         this.x = nx; this.y = ny; this.isMoving = true;
                     } else {
-                        this.isMoving = false; // Blocked by wall or closed door, wait patiently
+                        this.isMoving = false; 
                     }
                 }
             } else {
-                // 4. Assign New Destination
                 let start = getClosestNode(this.x, this.y);
                 let target = Math.floor(Math.random() * waypoints.length);
                 let pathIds = getPath(start, target);
@@ -193,13 +184,11 @@ class Crewmate {
             }
         }
 
-        // Animation Toggle
         if (this.isMoving) {
             this.animTimer++;
             if (this.animTimer > 8) { this.showWalkFrame = !this.showWalkFrame; this.animTimer = 0; }
         } else { this.showWalkFrame = false; }
 
-        // Bot Memory (Sight)
         if (!this.isPlayer && !lightsOut) {
             [player, ...bots].forEach(other => {
                 if (other !== this && !other.isDead && !other.isEjected) {
@@ -224,7 +213,6 @@ class Crewmate {
     }
 }
 
-// Spawn bots exactly on waypoints so they don't spawn inside walls
 const player = new Crewmate(waypoints[4].x, waypoints[4].y, true, 'Red');
 const bots = [
     new Crewmate(waypoints[0].x, waypoints[0].y, false, 'Blue'),
@@ -332,21 +320,53 @@ function triggerReport(reporter, deadBody) {
 
     let selfReportAccusers = 0;
     let isSelfReport = (reporter === player && deadBody.killer === player);
+    
+    // --- THE FIX: Tracking the main accuser for agreements ---
+    let mainAccuser = null;
 
     if (isSelfReport) {
         alivePlayers.forEach(b => {
             if (!b.isPlayer && b.memory[player.colorName] > Date.now() - 15000 && b.memory[deadBody.colorName] > Date.now() - 15000) {
                 selfReportAccusers++;
-                setTimeout(() => { addChatMsg(b.colorName, `SELF REPORT! I saw Red with them!`); }, delay);
+                
+                if (!mainAccuser) {
+                    mainAccuser = b.colorName; // Register the first bot to speak up
+                    setTimeout(() => { addChatMsg(b.colorName, `SELF REPORT! I saw ${player.colorName} with them!`); }, delay);
+                } else {
+                    let currentAccuser = mainAccuser; // Capture for the timeout
+                    setTimeout(() => {
+                        let agreements = [
+                            `Yeah, i agree, ${currentAccuser}`,
+                            `listen to ${currentAccuser}`,
+                            `${player.colorName} is pretty sus`
+                        ];
+                        let phrase = agreements[Math.floor(Math.random() * agreements.length)];
+                        addChatMsg(b.colorName, phrase);
+                    }, delay);
+                }
                 delay += 800;
             }
         });
     } else {
         alivePlayers.forEach(b => {
             if (!b.isPlayer && suspect.colorName !== "Nobody" && suspect.colorName !== b.colorName) {
-                setTimeout(() => { 
-                    addChatMsg(b.colorName, `I saw ${suspect.colorName} go with ${deadBody.colorName}! ${suspect.colorName} is sus!`); 
-                }, delay);
+                if (!mainAccuser) {
+                    mainAccuser = b.colorName; // Register the first bot to speak up
+                    setTimeout(() => { 
+                        addChatMsg(b.colorName, `I saw ${suspect.colorName} go with ${deadBody.colorName}! ${suspect.colorName} is sus!`); 
+                    }, delay);
+                } else {
+                    let currentAccuser = mainAccuser; // Capture for the timeout
+                    setTimeout(() => {
+                        let agreements = [
+                            `Yeah, i agree, ${currentAccuser}`,
+                            `listen to ${currentAccuser}`,
+                            `${suspect.colorName} is pretty sus`
+                        ];
+                        let phrase = agreements[Math.floor(Math.random() * agreements.length)];
+                        addChatMsg(b.colorName, phrase);
+                    }, delay);
+                }
                 delay += 1000;
             }
         });
@@ -491,7 +511,6 @@ function drawNavigationArrow() {
 function gameLoop() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    // Cooldown Timers
     let now = Date.now();
     if (now - lastTick >= 1000) {
         if (killCooldown > 0 && !gamePaused && !gameWon) killCooldown--;
@@ -509,7 +528,6 @@ function gameLoop() {
         lastTick = now;
     }
 
-    // Update HUD & UI Map Buttons
     let nearPanel = Math.hypot(player.x - (elecPanel.x + elecPanel.w/2), player.y - (elecPanel.y + elecPanel.h/2)) < 150;
     document.getElementById('use-btn').className = (lightsOut && nearPanel && !gamePaused) ? 'action-btn active-use' : 'action-btn';
 
