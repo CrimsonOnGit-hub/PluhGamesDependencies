@@ -6,6 +6,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Varela+Round&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <style>
+        /* Exact color match to the canvas walls for the 1:1 Sabotage Map */
         .sabo-wall { position: absolute; background: #4a5a6a; }
     </style>
 </head>
@@ -32,28 +33,23 @@
         <div id="sabotage-layer" style="display: none;">
             <div id="sabo-map-container">
                 <h2 style="color: #ff4747; text-align: center; margin-top: 0;">SABOTAGE MAP</h2>
+                
                 <div id="sabo-map" style="position: relative; width: 100%; aspect-ratio: 4/3; background: #2a2a2a; border: 4px solid #fff; border-radius: 8px; overflow: hidden; box-shadow: inset 0 0 20px rgba(0,0,0,0.8);">
                     
-                    <div class="sabo-wall" style="left: 0; top: 0; width: 100%; height: 3.33%;"></div> 
-                    <div class="sabo-wall" style="left: 0; top: 96.66%; width: 100%; height: 3.33%;"></div> 
-                    <div class="sabo-wall" style="left: 0; top: 0; width: 2.5%; height: 100%;"></div> 
-                    <div class="sabo-wall" style="left: 97.5%; top: 0; width: 2.5%; height: 100%;"></div> 
-
-                    <div class="sabo-wall" style="left: 20%; top: 0%; width: 5%; height: 36.66%;"></div>
+                    <div class="sabo-wall" style="left: 0; top: 0; width: 100%; height: 3.33%;"></div> <div class="sabo-wall" style="left: 0; top: 96.66%; width: 100%; height: 3.33%;"></div> <div class="sabo-wall" style="left: 0; top: 0; width: 2.5%; height: 100%;"></div> <div class="sabo-wall" style="left: 97.5%; top: 0; width: 2.5%; height: 100%;"></div> <div class="sabo-wall" style="left: 20%; top: 0%; width: 5%; height: 36.66%;"></div>
                     <div class="sabo-wall" style="left: 20%; top: 56.66%; width: 5%; height: 43.33%;"></div>
 
-                    <div class="sabo-wall" style="left: 50%; top: 20%; width: 30%; height: 6.66%;"></div> 
-                    <div class="sabo-wall" style="left: 50%; top: 66.66%; width: 30%; height: 6.66%;"></div> 
-                    <div class="sabo-wall" style="left: 50%; top: 26.66%; width: 5%; height: 10%;"></div> 
-                    <div class="sabo-wall" style="left: 50%; top: 56.66%; width: 5%; height: 10%;"></div> 
-
-                    <div class="sabo-wall" style="left: 40%; top: 0%; width: 5%; height: 20%;"></div>
+                    <div class="sabo-wall" style="left: 50%; top: 20%; width: 30%; height: 6.66%;"></div> <div class="sabo-wall" style="left: 50%; top: 66.66%; width: 30%; height: 6.66%;"></div> <div class="sabo-wall" style="left: 50%; top: 26.66%; width: 5%; height: 10%;"></div> <div class="sabo-wall" style="left: 50%; top: 56.66%; width: 5%; height: 10%;"></div> <div class="sabo-wall" style="left: 40%; top: 0%; width: 5%; height: 20%;"></div>
                     <div class="sabo-wall" style="left: 55%; top: 0%; width: 5%; height: 20%;"></div>
                     
                     <button id="sabo-door-1" class="sabo-icon door-icon" style="position: absolute; top: 46.66%; left: 22.5%; transform: translate(-50%, -50%); margin: 0;" onclick="triggerSabotage('door-1')">🚪</button>
+                    
                     <button id="sabo-door-2" class="sabo-icon door-icon" style="position: absolute; top: 46.66%; left: 52.5%; transform: translate(-50%, -50%); margin: 0;" onclick="triggerSabotage('door-2')">🚪</button>
+                    
                     <button id="sabo-door-3" class="sabo-icon door-icon" style="position: absolute; top: 18.33%; left: 50%; transform: translate(-50%, -50%); margin: 0;" onclick="triggerSabotage('door-3')">🚪</button>
+
                     <button id="sabo-lights" class="sabo-icon lights-icon" style="position: absolute; top: 8%; left: 50%; transform: translate(-50%, -50%); margin: 0;" onclick="triggerSabotage('lights')">⚡</button>
+                    
                 </div>
                 <button class="vote-btn skip-btn" style="margin-top: 15px; width: 100%;" onclick="toggleSabotageMap()">Close Map</button>
             </div>
@@ -63,6 +59,7 @@
             <div id="tablet-screen">
                 <h2 id="voting-title">Emergency Meeting</h2>
                 <div id="chat-box"></div>
+                
                 <div id="quick-chat-ui">
                     <select id="quick-chat-select" class="chat-select">
                         <option value="" disabled selected>-- Quick Chat --</option>
@@ -73,10 +70,12 @@
                             <option value="Any proof?">Any proof?</option>
                             <option value="Skip vote.">Skip vote.</option>
                         </optgroup>
-                        <optgroup id="qc-accuse" label="Accuse"></optgroup>
+                        <optgroup id="qc-accuse" label="Accuse">
+                            </optgroup>
                     </select>
                     <button class="vote-btn" style="padding: 10px 20px;" onclick="sendPlayerChat()">Send</button>
                 </div>
+
                 <div id="voting-buttons"></div>
             </div>
         </div>
