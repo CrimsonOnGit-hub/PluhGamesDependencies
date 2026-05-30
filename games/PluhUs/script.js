@@ -111,6 +111,8 @@ class Crewmate {
         this.targetNode = null;
         this.waitTimer = 0;
         this.goingToFixLights = false;
+        this.finalOffsetX = 0;
+        this.finalOffsetY = 0;
 
         this.isMoving = false; this.animTimer = 0; this.showWalkFrame = false;
         this.memory = {}; 
@@ -128,6 +130,7 @@ class Crewmate {
             if (keys['KeyD']) { nx += this.speed; this.isMoving = true; }
             if (!checkCollision(nx, ny, drawSize)) { this.x = nx; this.y = ny; }
         } else {
+            // Sabotage Check
             if (lightsOut && !this.goingToFixLights) {
                 this.goingToFixLights = true;
                 let start = getClosestNode(this.x, this.y);
@@ -139,6 +142,7 @@ class Crewmate {
                 this.goingToFixLights = false;
             }
 
+            // Fix Lights Task
             if (this.goingToFixLights && Math.hypot(this.x - waypoints[5].x, this.y - waypoints[5].y) < 100) {
                 this.isMoving = false;
                 if (Math.random() < 0.01) { 
@@ -147,12 +151,30 @@ class Crewmate {
                 return;
             }
 
+            // Follow the Route with Wander Variance
             if (this.waitTimer > 0) {
                 this.waitTimer--;
                 this.isMoving = false;
             } else if (this.targetNode) {
-                let dx = this.targetNode.x - this.x;
-                let dy = this.targetNode.y - this.y;
+                let isFinalNode = (this.path.length === 0);
+                
+                let targetX = this.targetNode.x;
+                let targetY = this.targetNode.y;
+                
+                if (isFinalNode) {
+                    if (!this.finalOffsetX) {
+                        this.finalOffsetX = (Math.random() - 0.5) * 150; 
+                        this.finalOffsetY = (Math.random() - 0.5) * 150;
+                    }
+                    targetX += this.finalOffsetX;
+                    targetY += this.finalOffsetY;
+                } else {
+                    this.finalOffsetX = 0; 
+                    this.finalOffsetY = 0;
+                }
+
+                let dx = targetX - this.x;
+                let dy = targetY - this.y;
                 let dist = Math.hypot(dx, dy);
 
                 if (dist < 10) {
@@ -161,7 +183,7 @@ class Crewmate {
                         this.targetNode = waypoints[this.path[0]]; 
                     } else {
                         this.targetNode = null; 
-                        this.waitTimer = 30 + Math.random() * 90; 
+                        this.waitTimer = 100 + Math.random() * 200; 
                     }
                 } else {
                     let angle = Math.atan2(dy, dx);
@@ -171,12 +193,25 @@ class Crewmate {
                     if (!checkCollision(nx, ny, drawSize)) {
                         this.x = nx; this.y = ny; this.isMoving = true;
                     } else {
-                        this.isMoving = false; 
+                        // Wall Sliding
+                        if (!checkCollision(nx, this.y, drawSize)) {
+                            this.x = nx; this.isMoving = true;
+                        } else if (!checkCollision(this.x, ny, drawSize)) {
+                            this.y = ny; this.isMoving = true;
+                        } else {
+                            this.isMoving = false; 
+                            if (Math.random() < 0.05) this.targetNode = null; 
+                        }
                     }
                 }
             } else {
+                // Pick New Destination
                 let start = getClosestNode(this.x, this.y);
-                let target = Math.floor(Math.random() * waypoints.length);
+                let target;
+                do {
+                    target = Math.floor(Math.random() * waypoints.length);
+                } while (target === start && waypoints.length > 1);
+
                 let pathIds = getPath(start, target);
                 pathIds.shift();
                 this.path = pathIds;
@@ -320,8 +355,6 @@ function triggerReport(reporter, deadBody) {
 
     let selfReportAccusers = 0;
     let isSelfReport = (reporter === player && deadBody.killer === player);
-    
-    // --- THE FIX: Tracking the main accuser for agreements ---
     let mainAccuser = null;
 
     if (isSelfReport) {
@@ -330,10 +363,10 @@ function triggerReport(reporter, deadBody) {
                 selfReportAccusers++;
                 
                 if (!mainAccuser) {
-                    mainAccuser = b.colorName; // Register the first bot to speak up
+                    mainAccuser = b.colorName; 
                     setTimeout(() => { addChatMsg(b.colorName, `SELF REPORT! I saw ${player.colorName} with them!`); }, delay);
                 } else {
-                    let currentAccuser = mainAccuser; // Capture for the timeout
+                    let currentAccuser = mainAccuser; 
                     setTimeout(() => {
                         let agreements = [
                             `Yeah, i agree, ${currentAccuser}`,
@@ -351,12 +384,12 @@ function triggerReport(reporter, deadBody) {
         alivePlayers.forEach(b => {
             if (!b.isPlayer && suspect.colorName !== "Nobody" && suspect.colorName !== b.colorName) {
                 if (!mainAccuser) {
-                    mainAccuser = b.colorName; // Register the first bot to speak up
+                    mainAccuser = b.colorName; 
                     setTimeout(() => { 
                         addChatMsg(b.colorName, `I saw ${suspect.colorName} go with ${deadBody.colorName}! ${suspect.colorName} is sus!`); 
                     }, delay);
                 } else {
-                    let currentAccuser = mainAccuser; // Capture for the timeout
+                    let currentAccuser = mainAccuser; 
                     setTimeout(() => {
                         let agreements = [
                             `Yeah, i agree, ${currentAccuser}`,
