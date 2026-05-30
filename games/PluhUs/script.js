@@ -55,7 +55,7 @@ let lightsOut = false;
 let visionRadius = 500; 
 let isSabotageMapOpen = false;
 
-// --- MAP & VENTS ---
+// --- MAP & VENTS (UPDATED 1:1 WITH SKETCH) ---
 const WORLD_W = 2000;
 const WORLD_H = 1500;
 const walls = [
@@ -75,11 +75,12 @@ const doors = [
 
 const elecPanel = { x: 950, y: 50, w: 100, h: 60 };
 
+// Vents placed precisely inside rooms based on your image layout
 const vents = [
-    { x: 120, y: 120 },   
-    { x: 120, y: 1380 },  
-    { x: 1880, y: 120 },  
-    { x: 1880, y: 1380 }  
+    { x: 200, y: 250 },   // Vent 1: Left Top Hallway (Reactor Area)
+    { x: 950, y: 200 },   // Vent 2: Electrical Room (Right next to panel)
+    { x: 1300, y: 650 },  // Vent 3: Admin Room (Right side compartment)
+    { x: 200, y: 1200 }   // Vent 4: Left Bottom Hallway
 ];
 
 function checkCollision(nx, ny, size) {
@@ -463,7 +464,7 @@ window.doReport = () => {
     }
 };
 
-// Hooking DOM buttons to actions
+// Hooking DOM elements to clickable functions
 document.getElementById('use-btn').onclick = window.doUse;
 document.getElementById('kill-btn').onclick = window.doKill;
 document.getElementById('report-btn').onclick = window.doReport;
@@ -810,6 +811,7 @@ function gameLoop() {
 
     ctx.fillStyle = "#2a2a2a"; ctx.fillRect(0, 0, WORLD_W, WORLD_H);
     
+    // Draw Vents Floor Graphics exactly at room nodes
     ctx.fillStyle = "#4a4a4a";
     ctx.strokeStyle = "#111";
     ctx.lineWidth = 4;
@@ -831,7 +833,7 @@ function gameLoop() {
             ctx.fillStyle = "#b53a3a"; ctx.fillRect(d.x, d.y, d.w, d.h);
             ctx.strokeStyle = "#111"; ctx.lineWidth = 5; ctx.strokeRect(d.x, d.y, d.w, d.h);
             ctx.beginPath();
-            if (d.w > d.h) { ctx.moveTo(d.x + d.w/2, d.y); ctx.lineTo(d.x + d.w/2, d.y + d.h); } 
+            if (d.w > d.h) { ctx.moveTo(d.x + d.w/2, d.y); ctx.lineTo(d.x + d.w/2, d.y + d.h) } 
             else { ctx.moveTo(d.x, d.y + d.h/2); ctx.lineTo(d.x + d.w, d.y + d.h/2); }
             ctx.stroke();
         }
@@ -858,13 +860,14 @@ function gameLoop() {
         ctx.fillStyle = grad; ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
     
+    // UI Notification Overlay for Vent Navigation
     if (player.inVent && !gamePaused && !gameWon) {
         ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
         ctx.fillRect(0, 0, canvas.width, 80);
         ctx.fillStyle = "#fff";
         ctx.font = "bold 24px 'Varela Round'";
         ctx.textAlign = "center";
-        ctx.fillText("IN VENT - Press A or D to move, V to exit", canvas.width/2, 45);
+        ctx.fillText("IN VENT - Press A or D to crawl, V to exit", canvas.width/2, 45);
     }
 
     if (lightsOut && !gamePaused && !gameWon && !player.inVent) drawNavigationArrow();
