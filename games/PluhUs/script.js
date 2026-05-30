@@ -749,4 +749,122 @@ function gameLoop() {
         lastTick = now;
     }
 
-    let nearPanel = Math.hypot(player.x - (ele
+    let nearPanel = Math.hypot(player.x - (elecPanel.x + elecPanel.w/2), player.y - (elecPanel.y + elecPanel.h/2)) < 150;
+    document.getElementById('use-btn').className = (lightsOut && nearPanel && !gamePaused && !player.inVent) ? 'action-btn active-use' : 'action-btn';
+
+    if (player.isImpostor) {
+        const killBtn = document.getElementById('kill-btn');
+        if (killCooldown > 0) {
+            killBtn.className = 'action-btn cooldown'; killBtn.innerText = killCooldown;
+        } else {
+            let canKill = bots.some(b => !b.isDead && !b.isEjected && !b.inVent && Math.hypot(b.x - player.x, b.y - player.y) < 90);
+            killBtn.className = (canKill && !gamePaused && !lightsOut && !player.inVent) ? 'action-btn active-kill' : 'action-btn';
+            killBtn.innerText = 'KILL (E)';
+        }
+        
+        const ventBtn = document.getElementById('vent-btn');
+        if (ventBtn) {
+            ventBtn.style.display = 'flex';
+            let nearVent = vents.some(v => Math.hypot(player.x - v.x, player.y - v.y) < 100);
+            ventBtn.className = (nearVent || player.inVent) ? 'action-btn active-kill' : 'action-btn';
+            ventBtn.innerText = player.inVent ? 'EXIT (V)' : 'VENT (V)';
+        }
+    } else {
+        const ventBtn = document.getElementById('vent-btn');
+        if (ventBtn) ventBtn.style.display = 'none';
+    }
+
+    let canReport = bots.some(b => b.isDead && !b.isCleanedUp && Math.hypot(player.x - b.x, player.y - b.y) < 250);
+    document.getElementById('report-btn').className = (canReport && !gamePaused && !player.inVent) ? 'action-btn active-report' : 'action-btn';
+
+    if (isSabotageMapOpen && player.isImpostor) {
+        document.getElementById('sabo-lights').className = (globalSabotageCooldown > 0 || lightsOut) ? 'sabo-icon lights-icon cooldown' : 'sabo-icon lights-icon';
+        doors.forEach(d => {
+            let dBtn = document.getElementById('sabo-' + d.id);
+            if (dBtn) {
+                dBtn.className = (d.cooldown > 0 || d.isClosed) ? 'sabo-icon door-icon cooldown' : 'sabo-icon door-icon';
+                dBtn.innerText = d.isClosed ? 'X' : '🚪';
+            }
+        });
+    }
+
+    if (!gamePaused && !gameWon && !lightsOut && !player.inVent) {
+        bots.forEach(bot => {
+            if (!bot.isDead && !bot.isEjected && !bot.inVent) {
+                bots.filter(c => c.isDead && !c.isCleanedUp).forEach(body => {
+                    if (Math.hypot(bot.x - body.x, bot.y - body.y) < 250) triggerReport(bot, body);
+                });
+            }
+        });
+    }
+
+    ctx.save();
+    let camX = canvas.width / 2 - player.x - drawSize / 2;
+    let camY = canvas.height / 2 - player.y - drawSize / 2;
+    ctx.translate(camX, camY);
+
+    ctx.fillStyle = "#2a2a2a"; ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+    
+    ctx.fillStyle = "#4a4a4a";
+    ctx.strokeStyle = "#111";
+    ctx.lineWidth = 4;
+    vents.forEach(v => {
+        ctx.fillRect(v.x - 30, v.y - 30, 60, 60);
+        ctx.strokeRect(v.x - 30, v.y - 30, 60, 60);
+        ctx.beginPath();
+        for(let i = -15; i <= 15; i += 10) {
+            ctx.moveTo(v.x - 20, v.y + i);
+            ctx.lineTo(v.x + 20, v.y + i);
+        }
+        ctx.stroke();
+    });
+
+    ctx.fillStyle = "#4a5a6a"; walls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
+
+    doors.forEach(d => {
+        if (d.isClosed) {
+            ctx.fillStyle = "#b53a3a"; ctx.fillRect(d.x, d.y, d.w, d.h);
+            ctx.strokeStyle = "#111"; ctx.lineWidth = 5; ctx.strokeRect(d.x, d.y, d.w, d.h);
+            ctx.beginPath();
+            if (d.w > d.h) { ctx.moveTo(d.x + d.w/2, d.y); ctx.lineTo(d.x + d.w/2, d.y + d.h); } 
+            else { ctx.moveTo(d.x, d.y + d.h/2); ctx.lineTo(d.x + d.w, d.y + d.h/2); }
+            ctx.stroke();
+        }
+    });
+
+    ctx.fillStyle = lightsOut ? "#ff4747" : "#555"; 
+    ctx.fillRect(elecPanel.x, elecPanel.y, elecPanel.w, elecPanel.h);
+    ctx.fillStyle = "white"; ctx.font = "bold 20px 'Varela Round'"; ctx.textAlign = "center";
+    ctx.fillText("⚡", elecPanel.x + elecPanel.w/2, elecPanel.y + elecPanel.h/2 + 7);
+    if (lightsOut) {
+        ctx.fillStyle = "rgba(255, 71, 71, 0.5)";
+        ctx.beginPath(); ctx.arc(elecPanel.x + elecPanel.w/2, elecPanel.y - 20, 15 + Math.sin(Date.now()/200)*5, 0, Math.PI*2); ctx.fill();
+    }
+
+    let allEntities = [...bots, player];
+    allEntities.forEach(e => { if (e.isDead) { e.update(); e.draw(ctx); } });
+    allEntities.forEach(e => { if (!e.isDead) { e.update(); e.draw(ctx); } });
+
+    ctx.restore();
+
+    if (window.devVignetteEnabled && !gamePaused && !gameWon) {
+        let grad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, visionRadius * 0.3, canvas.width/2, canvas.height/2, visionRadius);
+        grad.addColorStop(0, 'rgba(0,0,0,0)'); grad.addColorStop(1, 'rgba(0,0,0,0.98)');
+        ctx.fillStyle = grad; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    
+    if (player.inVent && !gamePaused && !gameWon) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+        ctx.fillRect(0, 0, canvas.width, 80);
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 24px 'Varela Round'";
+        ctx.textAlign = "center";
+        ctx.fillText("IN VENT - Press A or D to move, V to exit", canvas.width/2, 45);
+    }
+
+    if (lightsOut && !gamePaused && !gameWon && !player.inVent) drawNavigationArrow();
+
+    requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
