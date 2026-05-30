@@ -7,15 +7,15 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+
     <div id="game-container">
-        <canvas id="gameCanvas"></canvas>
-        <div id="game-container">
         <canvas id="gameCanvas"></canvas>
         
         <div id="mode-toggle" onclick="toggleGameMode()">Mode: Random Role</div>
+        
         <div id="task-list">
             <h3 style="margin:0; color:#ff4747;">Impostor</h3>
-            <p>Sabotage and kill everyone. Don't get caught</p>
+            <p>Sabotage and kill everyone.</p>
         </div>
 
         <div id="hud-buttons">
@@ -31,10 +31,12 @@
                 <div id="sabo-map">
                     <div class="map-room" style="top: 0; left: 0; width: 20%; height: 100%;"></div>
                     <div class="map-room" style="top: 20%; left: 50%; width: 30%; height: 46%;"></div>
+                    <div class="map-room" style="top: 0; left: 40%; width: 20%; height: 15%;"></div>
                     
-                    <button id="sabo-lights" class="sabo-icon lights-icon" style="top: 10%; left: 45%;" onclick="triggerSabotage('lights')">⚡</button>
+                    <button id="sabo-lights" class="sabo-icon lights-icon" style="top: 25%; left: 45%;" onclick="triggerSabotage('lights')">⚡</button>
                     <button id="sabo-door-1" class="sabo-icon door-icon" style="top: 50%; left: 15%;" onclick="triggerSabotage('door-1')">🚪</button>
-                    <button id="sabo-door-2" class="sabo-icon door-icon" style="top: 45%; left: 45%;" onclick="triggerSabotage('door-2')">🚪</button>
+                    <button id="sabo-door-2" class="sabo-icon door-icon" style="top: 50%; left: 45%;" onclick="triggerSabotage('door-2')">🚪</button>
+                    <button id="sabo-door-3" class="sabo-icon door-icon" style="top: 10%; left: 45%;" onclick="triggerSabotage('door-3')">🚪</button>
                 </div>
                 <button class="vote-btn skip-btn" style="margin-top: 15px; width: 100%;" onclick="toggleSabotageMap()">Close Map</button>
             </div>
@@ -84,6 +86,7 @@
             <h1 id="end-text"></h1>
         </div>
     </div>
+
     <script src="script.js"></script>
 </body>
 </html>
