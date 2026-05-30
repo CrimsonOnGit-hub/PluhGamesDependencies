@@ -17,10 +17,9 @@ let gameMode = localStorage.getItem('pluhus_mode') || 'random';
 window.toggleGameMode = function() {
     gameMode = (gameMode === 'random') ? 'always_impostor' : 'random';
     localStorage.setItem('pluhus_mode', gameMode);
-    location.reload(); // Instantly restart with new mode
+    location.reload();
 }
 
-// Update the button text as soon as the file loads
 window.addEventListener('DOMContentLoaded', () => {
     const modeBtn = document.getElementById('mode-toggle');
     if (modeBtn) {
@@ -41,21 +40,12 @@ let isSabotageMapOpen = false;
 const WORLD_W = 2000;
 const WORLD_H = 1500;
 const walls = [
-    {x: 0, y: 0, w: WORLD_W, h: 50}, 
-    {x: 0, y: WORLD_H-50, w: WORLD_W, h: 50}, 
-    {x: 0, y: 0, w: 50, h: WORLD_H}, 
-    {x: WORLD_W-50, y: 0, w: 50, h: WORLD_H}, 
-    
-    {x: 400, y: 0, w: 100, h: 550}, 
-    {x: 400, y: 850, w: 100, h: 650}, 
-    
-    {x: 1000, y: 300, w: 600, h: 100}, 
-    {x: 1000, y: 1000, w: 600, h: 100}, 
-    {x: 1000, y: 400, w: 100, h: 150}, 
-    {x: 1000, y: 850, w: 100, h: 150}, 
-
-    {x: 800, y: 0, w: 100, h: 300},
-    {x: 1100, y: 0, w: 100, h: 300}
+    {x: 0, y: 0, w: WORLD_W, h: 50}, {x: 0, y: WORLD_H-50, w: WORLD_W, h: 50}, 
+    {x: 0, y: 0, w: 50, h: WORLD_H}, {x: WORLD_W-50, y: 0, w: 50, h: WORLD_H}, 
+    {x: 400, y: 0, w: 100, h: 550}, {x: 400, y: 850, w: 100, h: 650}, 
+    {x: 1000, y: 300, w: 600, h: 100}, {x: 1000, y: 1000, w: 600, h: 100}, 
+    {x: 1000, y: 400, w: 100, h: 150}, {x: 1000, y: 850, w: 100, h: 150}, 
+    {x: 800, y: 0, w: 100, h: 300}, {x: 1100, y: 0, w: 100, h: 300}
 ];
 
 const doors = [
@@ -66,28 +56,28 @@ const doors = [
 
 const elecPanel = { x: 950, y: 50, w: 100, h: 60 };
 
+// Improved Bounding Box Collision
 function checkCollision(nx, ny, size) {
+    let padding = 5;
+    let left = nx + padding; let right = nx + size - padding;
+    let top = ny + padding; let bottom = ny + size - padding;
+
     for (let w of walls) {
-        if (nx < w.x + w.w && nx + size > w.x && ny < w.y + w.h && ny + size > w.y) return true;
+        if (right > w.x && left < w.x + w.w && bottom > w.y && top < w.y + w.h) return true;
     }
     for (let d of doors) {
-        if (d.isClosed && nx < d.x + d.w && nx + size > d.x && ny < d.y + d.h && ny + size > d.y) return true;
+        if (d.isClosed && right > d.x && left < d.x + d.w && bottom > d.y && top < d.y + d.h) return true;
     }
     return false;
 }
 
 // --- AI PATHFINDING GRAPH ---
 const waypoints = [
-    { id: 0, x: 250, y: 300, edges: [2] },         
-    { id: 1, x: 250, y: 1200, edges: [2] },        
-    { id: 2, x: 250, y: 700, edges: [0, 1, 3] },   
-    { id: 3, x: 550, y: 700, edges: [2, 4] },      
-    { id: 4, x: 800, y: 700, edges: [3, 6, 10] },  
-    { id: 5, x: 1000, y: 150, edges: [6] },        
-    { id: 6, x: 1000, y: 700, edges: [4, 5, 7] },  
-    { id: 7, x: 1150, y: 700, edges: [6, 8, 9] },  
-    { id: 8, x: 1450, y: 500, edges: [7] },        
-    { id: 9, x: 1450, y: 900, edges: [7] },        
+    { id: 0, x: 250, y: 300, edges: [2] }, { id: 1, x: 250, y: 1200, edges: [2] },        
+    { id: 2, x: 250, y: 700, edges: [0, 1, 3] }, { id: 3, x: 550, y: 700, edges: [2, 4] },      
+    { id: 4, x: 800, y: 700, edges: [3, 6, 10] }, { id: 5, x: 1000, y: 150, edges: [6] },        
+    { id: 6, x: 1000, y: 700, edges: [4, 5, 7] }, { id: 7, x: 1150, y: 700, edges: [6, 8, 9] },  
+    { id: 8, x: 1450, y: 500, edges: [7] }, { id: 9, x: 1450, y: 900, edges: [7] },        
     { id: 10, x: 800, y: 1300, edges: [4] }        
 ];
 
@@ -138,6 +128,8 @@ class Crewmate {
         this.finalOffsetY = 0;
 
         this.isMoving = false; this.animTimer = 0; this.showWalkFrame = false;
+        this.wobbleX = 0; this.wobbleY = 0;
+        this.lastDir = 'right';
         this.memory = {}; 
     }
 
@@ -149,44 +141,36 @@ class Crewmate {
             let nx = this.x; let ny = this.y;
             if (keys['KeyW']) { ny -= this.speed; this.isMoving = true; }
             if (keys['KeyS']) { ny += this.speed; this.isMoving = true; }
-            if (keys['KeyA']) { nx -= this.speed; this.isMoving = true; }
-            if (keys['KeyD']) { nx += this.speed; this.isMoving = true; }
+            if (keys['KeyA']) { nx -= this.speed; this.isMoving = true; this.lastDir = 'left'; }
+            if (keys['KeyD']) { nx += this.speed; this.isMoving = true; this.lastDir = 'right'; }
             if (!checkCollision(nx, ny, drawSize)) { this.x = nx; this.y = ny; }
         } else {
+            // --- AI IMPOSTOR LOGIC ---
             if (this.isImpostor) {
                 if (this.internalKillCooldown > 0) this.internalKillCooldown--;
-                
                 if (this.internalKillCooldown <= 0) {
                     let aliveCrew = [player, ...bots].filter(c => !c.isDead && !c.isEjected && !c.isImpostor);
                     let target = null;
                     let minDist = Infinity;
-                    
                     aliveCrew.forEach(c => {
                         let d = Math.hypot(c.x - this.x, c.y - this.y);
                         if (d < minDist) { minDist = d; target = c; }
                     });
-
                     if (target && minDist < 250) {
                         let witnesses = aliveCrew.filter(c => c !== target && Math.hypot(c.x - this.x, c.y - this.y) < 400);
-                        
                         if (witnesses.length === 0 || lightsOut) {
                             if (minDist < 90) {
-                                target.isDead = true;
-                                target.killer = this;
+                                target.isDead = true; target.killer = this;
                                 this.internalKillCooldown = 900; 
                                 checkWinCondition();
-                                
-                                this.targetNode = null; 
-                                this.path = [];
-                                this.waitTimer = 0;
+                                this.targetNode = null; this.path = []; this.waitTimer = 0;
                             } else {
                                 let angle = Math.atan2(target.y - this.y, target.x - this.x);
                                 let nx = this.x + Math.cos(angle) * this.speed;
                                 let ny = this.y + Math.sin(angle) * this.speed;
                                 if (!checkCollision(nx, ny, drawSize)) {
                                     this.x = nx; this.y = ny; this.isMoving = true;
-                                    this.animTimer++;
-                                    if (this.animTimer > 8) { this.showWalkFrame = !this.showWalkFrame; this.animTimer = 0; }
+                                    this.lastDir = (Math.cos(angle) > 0) ? 'right' : 'left';
                                 }
                                 return; 
                             }
@@ -195,84 +179,71 @@ class Crewmate {
                 }
             }
             
+            // --- PATHFINDING & WOBBLE ---
             if (lightsOut && !this.goingToFixLights && !this.isImpostor) {
                 this.goingToFixLights = true;
                 let start = getClosestNode(this.x, this.y);
-                let pathIds = getPath(start, 5); 
-                pathIds.shift();
+                let pathIds = getPath(start, 5); pathIds.shift();
                 this.path = pathIds;
                 this.targetNode = this.path.length > 0 ? waypoints[this.path[0]] : waypoints[5];
-            } else if (!lightsOut) {
-                this.goingToFixLights = false;
-            }
+            } else if (!lightsOut) { this.goingToFixLights = false; }
 
             if (this.goingToFixLights && Math.hypot(this.x - waypoints[5].x, this.y - waypoints[5].y) < 100) {
                 this.isMoving = false;
-                if (Math.random() < 0.01) { 
-                    lightsOut = false; visionRadius = 500; closeTask();
-                }
+                if (Math.random() < 0.01) { lightsOut = false; visionRadius = 500; closeTask(); }
                 return;
             }
 
-            if (this.waitTimer > 0) {
-                this.waitTimer--;
-                this.isMoving = false;
-            } else if (this.targetNode) {
+            if (this.waitTimer > 0) { this.waitTimer--; this.isMoving = false; } 
+            else if (this.targetNode) {
                 let isFinalNode = (this.path.length === 0);
-                let targetX = this.targetNode.x;
-                let targetY = this.targetNode.y;
+                let targetX = this.targetNode.x + (isFinalNode ? this.finalOffsetX : 0);
+                let targetY = this.targetNode.y + (isFinalNode ? this.finalOffsetY : 0);
                 
-                if (isFinalNode) {
-                    if (!this.finalOffsetX) {
-                        this.finalOffsetX = (Math.random() - 0.5) * 60; 
-                        this.finalOffsetY = (Math.random() - 0.5) * 60;
-                    }
-                    targetX += this.finalOffsetX;
-                    targetY += this.finalOffsetY;
-                } else {
-                    this.finalOffsetX = 0; 
-                    this.finalOffsetY = 0;
-                }
-
-                let dx = targetX - this.x;
-                let dy = targetY - this.y;
+                let dx = targetX - this.x; let dy = targetY - this.y;
                 let dist = Math.hypot(dx, dy);
 
                 if (dist < 10) {
                     this.path.shift(); 
-                    if (this.path.length > 0) {
-                        this.targetNode = waypoints[this.path[0]]; 
-                    } else {
+                    if (this.path.length > 0) this.targetNode = waypoints[this.path[0]]; 
+                    else { 
                         this.targetNode = null; 
+                        this.finalOffsetX = (Math.random() - 0.5) * 60; 
+                        this.finalOffsetY = (Math.random() - 0.5) * 60;
                         this.waitTimer = 100 + Math.random() * 200; 
                     }
                 } else {
+                    if (Math.random() < 0.05) { this.wobbleX = (Math.random() - 0.5) * 2; this.wobbleY = (Math.random() - 0.5) * 2; }
                     let angle = Math.atan2(dy, dx);
-                    let nx = this.x + Math.cos(angle) * this.speed;
-                    let ny = this.y + Math.sin(angle) * this.speed;
+                    
+                    let nx = this.x + (Math.cos(angle) * this.speed) + this.wobbleX;
+                    let ny = this.y + (Math.sin(angle) * this.speed) + this.wobbleY;
+                    
+                    // Separation Force
+                    let sepX = 0; let sepY = 0;
+                    [player, ...bots].forEach(other => {
+                        if (other !== this && !other.isDead && Math.hypot(this.x - other.x, this.y - other.y) < 40) {
+                            sepX += (this.x - other.x) * 0.05;
+                            sepY += (this.y - other.y) * 0.05;
+                        }
+                    });
+                    nx += sepX; ny += sepY;
 
                     if (!checkCollision(nx, ny, drawSize)) {
                         this.x = nx; this.y = ny; this.isMoving = true;
+                        this.lastDir = (nx > this.x) ? 'right' : 'left';
                     } else {
-                        if (!checkCollision(nx, this.y, drawSize)) {
-                            this.x = nx; this.isMoving = true;
-                        } else if (!checkCollision(this.x, ny, drawSize)) {
-                            this.y = ny; this.isMoving = true;
-                        } else {
-                            this.isMoving = false; 
-                            if (Math.random() < 0.01) this.targetNode = null; 
-                        }
+                        // Wall Sliding
+                        if (!checkCollision(nx, this.y, drawSize)) { this.x = nx; this.isMoving = true; }
+                        else if (!checkCollision(this.x, ny, drawSize)) { this.y = ny; this.isMoving = true; }
+                        else { this.isMoving = false; if (Math.random() < 0.01) this.targetNode = null; }
                     }
                 }
             } else {
                 let start = getClosestNode(this.x, this.y);
                 let target;
-                do {
-                    target = Math.floor(Math.random() * waypoints.length);
-                } while (target === start && waypoints.length > 1);
-
-                let pathIds = getPath(start, target);
-                pathIds.shift();
+                do { target = Math.floor(Math.random() * waypoints.length); } while (target === start && waypoints.length > 1);
+                let pathIds = getPath(start, target); pathIds.shift();
                 this.path = pathIds;
                 this.targetNode = this.path.length > 0 ? waypoints[this.path[0]] : waypoints[target];
             }
@@ -282,7 +253,8 @@ class Crewmate {
             this.animTimer++;
             if (this.animTimer > 8) { this.showWalkFrame = !this.showWalkFrame; this.animTimer = 0; }
         } else { this.showWalkFrame = false; }
-
+        
+        // Memory Update
         if (!this.isPlayer && !lightsOut) {
             [player, ...bots].forEach(other => {
                 if (other !== this && !other.isDead && !other.isEjected) {
@@ -297,20 +269,22 @@ class Crewmate {
     draw(ctx) {
         if (this.isEjected) return; 
         
-        if (this.isImpostor && player.isImpostor) {
-            ctx.fillStyle = "#ff4747";
-        } else {
-            ctx.fillStyle = "white"; 
-        }
-        ctx.font = "bold 14px 'Varela Round'"; 
-        ctx.textAlign = "center";
-        ctx.fillText(this.colorName, this.x + drawSize/2, this.y - 10);
+        // Sprite Flipping
+        ctx.save();
+        ctx.translate(this.x + drawSize/2, this.y + drawSize/2);
+        if (this.lastDir === 'left') ctx.scale(-1, 1);
+        const img = (this.isDead && !this.isCleanedUp) ? deadImg : (this.showWalkFrame ? walkImg : standImg);
+        ctx.drawImage(img, -drawSize/2, -drawSize/2, drawSize, drawSize);
+        ctx.restore();
 
-        if (this.isDead && !this.isCleanedUp) {
-            ctx.drawImage(deadImg, this.x, this.y, drawSize, drawSize);
-        } else if (!this.isDead) {
-            ctx.drawImage(this.showWalkFrame ? walkImg : standImg, this.x, this.y, drawSize, drawSize);
-        }
+        // Name Tag Rendering
+        ctx.fillStyle = (this.isImpostor && player.isImpostor) ? "#ff4747" : "white";
+        ctx.font = "bold 14px 'Varela Round'";
+        ctx.textAlign = "center";
+        ctx.strokeStyle = "black"; 
+        ctx.lineWidth = 3;
+        ctx.strokeText(this.colorName, this.x + drawSize/2, this.y - 5);
+        ctx.fillText(this.colorName, this.x + drawSize/2, this.y - 5);
     }
 }
 
@@ -325,17 +299,11 @@ const bots = [
     new Crewmate(waypoints[7].x, waypoints[7].y, false, 'Orange')
 ];
 
-// --- ROLE ASSIGNMENT ---
 function assignRoles() {
     let allEntities = [player, ...bots];
     allEntities.forEach(e => e.isImpostor = false);
-    
-    if (gameMode === 'always_impostor') {
-        player.isImpostor = true;
-    } else {
-        let chosenImpostor = allEntities[Math.floor(Math.random() * allEntities.length)];
-        chosenImpostor.isImpostor = true;
-    }
+    if (gameMode === 'always_impostor') player.isImpostor = true;
+    else allEntities[Math.floor(Math.random() * allEntities.length)].isImpostor = true;
 
     const taskHeader = document.querySelector('#task-list h3');
     const taskDesc = document.querySelector('#task-list p');
@@ -354,7 +322,6 @@ function assignRoles() {
         document.getElementById('sabotage-btn').style.display = 'none';
     }
 }
-
 assignRoles();
 
 // --- UI & SABOTAGE MAP LOGIC ---
@@ -400,9 +367,7 @@ window.toggleSwitch = function(el) {
     el.className = switchStates[index] ? 'switch on' : 'switch off';
     
     if (switchStates.every(s => s === true)) {
-        setTimeout(() => {
-            lightsOut = false; visionRadius = 500; closeTask();
-        }, 500);
+        setTimeout(() => { lightsOut = false; visionRadius = 500; closeTask(); }, 500);
     }
 }
 
@@ -454,9 +419,7 @@ function triggerReport(reporter, deadBody) {
     });
 
     let delay = 1000;
-    setTimeout(() => { 
-        if (!reporter.isPlayer) addChatMsg(reporter.colorName, `Where? I found a body.`); 
-    }, delay);
+    setTimeout(() => { if (!reporter.isPlayer) addChatMsg(reporter.colorName, `Where? I found a body.`); }, delay);
     delay += 1000;
 
     alivePlayers.forEach(b => {
@@ -478,20 +441,14 @@ function triggerReport(reporter, deadBody) {
         alivePlayers.forEach(b => {
             if (!b.isPlayer && b.memory[reporter.colorName] > Date.now() - 15000 && b.memory[deadBody.colorName] > Date.now() - 15000) {
                 selfReportAccusers++;
-                
                 if (!mainAccuser) {
                     mainAccuser = b.colorName; 
                     setTimeout(() => { addChatMsg(b.colorName, `SELF REPORT! I saw ${reporter.colorName} with them!`); }, delay);
                 } else {
                     let currentAccuser = mainAccuser; 
                     setTimeout(() => {
-                        let agreements = [
-                            `Yeah, i agree, ${currentAccuser}`,
-                            `listen to ${currentAccuser}`,
-                            `${reporter.colorName} is pretty sus`
-                        ];
-                        let phrase = agreements[Math.floor(Math.random() * agreements.length)];
-                        addChatMsg(b.colorName, phrase);
+                        let agreements = [`Yeah, i agree, ${currentAccuser}`, `listen to ${currentAccuser}`, `${reporter.colorName} is pretty sus`];
+                        addChatMsg(b.colorName, agreements[Math.floor(Math.random() * agreements.length)]);
                     }, delay);
                 }
                 delay += 800;
@@ -506,31 +463,22 @@ function triggerReport(reporter, deadBody) {
                     let randomTarget = potentialTargets[Math.floor(Math.random() * potentialTargets.length)];
                     setTimeout(() => {
                         addChatMsg(randomAccuser.colorName, `I didn't see the body, but ${randomTarget.colorName} is faking tasks.`);
-                        suspect = randomTarget; 
-                        mainAccuser = randomAccuser.colorName;
+                        suspect = randomTarget; mainAccuser = randomAccuser.colorName;
                     }, delay);
                     delay += 1000;
                 }
             }
         }
-
         alivePlayers.forEach(b => {
             if (!b.isPlayer && suspect.colorName !== "Nobody" && suspect.colorName !== b.colorName) {
                 if (!mainAccuser) {
                     mainAccuser = b.colorName; 
-                    setTimeout(() => { 
-                        addChatMsg(b.colorName, `I saw ${suspect.colorName} go with ${deadBody.colorName}! ${suspect.colorName} is sus!`); 
-                    }, delay);
+                    setTimeout(() => { addChatMsg(b.colorName, `I saw ${suspect.colorName} go with ${deadBody.colorName}! ${suspect.colorName} is sus!`); }, delay);
                 } else {
                     let currentAccuser = mainAccuser; 
                     setTimeout(() => {
-                        let agreements = [
-                            `Yeah, i agree, ${currentAccuser}`,
-                            `listen to ${currentAccuser}`,
-                            `${suspect.colorName} is pretty sus`
-                        ];
-                        let phrase = agreements[Math.floor(Math.random() * agreements.length)];
-                        addChatMsg(b.colorName, phrase);
+                        let agreements = [`Yeah, i agree, ${currentAccuser}`, `listen to ${currentAccuser}`, `${suspect.colorName} is pretty sus`];
+                        addChatMsg(b.colorName, agreements[Math.floor(Math.random() * agreements.length)]);
                     }, delay);
                 }
                 delay += 1000;
@@ -583,28 +531,18 @@ function castVote(playerChoice, suspect, alivePlayers, selfReportAccusers, repor
         }
         [player, ...bots].forEach(c => { if (c.isDead) c.isCleanedUp = true; });
         
-        killCooldown = 15; 
-        gamePaused = false; 
-        checkWinCondition(); 
+        killCooldown = 15; gamePaused = false; checkWinCondition(); 
     }, 3000);
 }
 
 function checkWinCondition() {
     if (gameWon) return;
-    
     let theImpostor = [player, ...bots].find(e => e.isImpostor);
-    
-    if (theImpostor.isEjected) { 
-        triggerEnd("CREWMATES WIN", "#3498db"); 
-        return; 
-    }
+    if (theImpostor.isEjected) { triggerEnd("CREWMATES WIN", "#3498db"); return; }
     
     let aliveCrew = [player, ...bots].filter(b => !b.isDead && !b.isEjected && !b.isImpostor).length;
     let aliveImps = theImpostor.isDead || theImpostor.isEjected ? 0 : 1;
-    
-    if (aliveCrew <= aliveImps && aliveImps > 0) { 
-        triggerEnd("IMPOSTOR WINS", "#ff4747"); 
-    }
+    if (aliveCrew <= aliveImps && aliveImps > 0) { triggerEnd("IMPOSTOR WINS", "#ff4747"); }
 }
 
 function triggerEnd(message, color) {
@@ -623,9 +561,7 @@ window.addEventListener('keydown', (e) => {
     if (e.code === 'Space') e.preventDefault(); 
     if (gamePaused || gameWon || player.isDead || player.isEjected) return; 
 
-    if (e.code === 'KeyF' && player.isImpostor) {
-        toggleSabotageMap();
-    }
+    if (e.code === 'KeyF' && player.isImpostor) toggleSabotageMap();
 
     if (e.code === 'Space' && !isSabotageMapOpen) {
         let nearPanel = Math.hypot(player.x - (elecPanel.x + elecPanel.w/2), player.y - (elecPanel.y + elecPanel.h/2)) < 150;
@@ -636,9 +572,7 @@ window.addEventListener('keydown', (e) => {
         for (let bot of bots) {
             if (!bot.isDead && !bot.isEjected && Math.hypot(bot.x - player.x, bot.y - player.y) < 90) { 
                 bot.isDead = true; bot.killer = player; 
-                killCooldown = 20; 
-                checkWinCondition(); 
-                break; 
+                killCooldown = 20; checkWinCondition(); break; 
             }
         }
     }
@@ -656,30 +590,20 @@ function drawNavigationArrow() {
     let targetY = elecPanel.y + elecPanel.h / 2;
     let playerCenterX = player.x + drawSize / 2;
     let playerCenterY = player.y + drawSize / 2;
-
     let angle = Math.atan2(targetY - playerCenterY, targetX - playerCenterX);
     let arrowRadius = drawSize + 30;
 
-    let centerX = canvas.width / 2;
-    let centerY = canvas.height / 2;
+    let centerX = canvas.width / 2; let centerY = canvas.height / 2;
     let screenArrowX = centerX + (Math.cos(angle) * arrowRadius);
     let screenArrowY = centerY + (Math.sin(angle) * arrowRadius);
 
     ctx.save();
     ctx.translate(screenArrowX, screenArrowY);
     ctx.rotate(angle); 
-
-    ctx.fillStyle = "#ff4747";
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = "white";
+    ctx.fillStyle = "#ff4747"; ctx.lineWidth = 4; ctx.strokeStyle = "white";
     ctx.beginPath();
-    ctx.moveTo(0, 0);       
-    ctx.lineTo(-20, -10);   
-    ctx.lineTo(-20, 10);    
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
+    ctx.moveTo(0, 0); ctx.lineTo(-20, -10); ctx.lineTo(-20, 10);    
+    ctx.closePath(); ctx.fill(); ctx.stroke();
     ctx.restore();
 }
 
@@ -691,7 +615,6 @@ function gameLoop() {
     if (now - lastTick >= 1000) {
         if (killCooldown > 0 && !gamePaused && !gameWon) killCooldown--;
         if (globalSabotageCooldown > 0 && !gamePaused && !gameWon) globalSabotageCooldown--;
-        
         if (!gamePaused && !gameWon) {
             doors.forEach(d => {
                 if (d.closeTimer > 0) {
@@ -752,18 +675,11 @@ function gameLoop() {
 
     doors.forEach(d => {
         if (d.isClosed) {
-            ctx.fillStyle = "#b53a3a"; 
-            ctx.fillRect(d.x, d.y, d.w, d.h);
-            ctx.strokeStyle = "#111"; ctx.lineWidth = 5;
-            ctx.strokeRect(d.x, d.y, d.w, d.h);
+            ctx.fillStyle = "#b53a3a"; ctx.fillRect(d.x, d.y, d.w, d.h);
+            ctx.strokeStyle = "#111"; ctx.lineWidth = 5; ctx.strokeRect(d.x, d.y, d.w, d.h);
             ctx.beginPath();
-            if (d.w > d.h) {
-                ctx.moveTo(d.x + d.w/2, d.y);
-                ctx.lineTo(d.x + d.w/2, d.y + d.h);
-            } else {
-                ctx.moveTo(d.x, d.y + d.h/2);
-                ctx.lineTo(d.x + d.w, d.y + d.h/2);
-            }
+            if (d.w > d.h) { ctx.moveTo(d.x + d.w/2, d.y); ctx.lineTo(d.x + d.w/2, d.y + d.h); } 
+            else { ctx.moveTo(d.x, d.y + d.h/2); ctx.lineTo(d.x + d.w, d.y + d.h/2); }
             ctx.stroke();
         }
     });
@@ -789,9 +705,7 @@ function gameLoop() {
         ctx.fillStyle = grad; ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
-    if (lightsOut && !gamePaused && !gameWon) {
-        drawNavigationArrow();
-    }
+    if (lightsOut && !gamePaused && !gameWon) drawNavigationArrow();
 
     requestAnimationFrame(gameLoop);
 }
