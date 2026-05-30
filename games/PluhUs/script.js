@@ -56,6 +56,50 @@ function checkCollision(nx, ny, size) {
     return false;
 }
 
+// --- AI PATHFINDING GRAPH ---
+// Nodes mapping out safe walkable areas and their connecting paths
+const waypoints = [
+    { id: 0, x: 200, y: 300, edges: [2] },         // 0: Reactor Top
+    { id: 1, x: 200, y: 1200, edges: [2] },        // 1: Reactor Bottom
+    { id: 2, x: 300, y: 700, edges: [0, 1, 3] },   // 2: Left of Door 1
+    { id: 3, x: 550, y: 700, edges: [2, 4, 10] },  // 3: Right of Door 1
+    { id: 4, x: 800, y: 700, edges: [3, 5, 6, 10] }, // 4: Center Hall
+    { id: 5, x: 920, y: 200, edges: [4] },         // 5: Electrical Box
+    { id: 6, x: 950, y: 700, edges: [4, 7] },      // 6: Left of Door 2
+    { id: 7, x: 1150, y: 700, edges: [6, 8, 9] },  // 7: Inside Admin
+    { id: 8, x: 1450, y: 500, edges: [7] },        // 8: Admin Top Right
+    { id: 9, x: 1450, y: 900, edges: [7] },        // 9: Admin Bottom Right
+    { id: 10, x: 800, y: 1300, edges: [3, 4] }     // 10: Bottom Center
+];
+
+function getClosestNode(x, y) {
+    let closest = 0; let min = Infinity;
+    waypoints.forEach(wp => {
+        let d = Math.hypot(x - wp.x, y - wp.y);
+        if (d < min) { min = d; closest = wp.id; }
+    });
+    return closest;
+}
+
+// Breadth-First Search to map shortest route between nodes
+function getPath(startId, endId) {
+    if (startId === endId) return [];
+    let queue = [[startId]];
+    let visited = new Set([startId]);
+    while(queue.length > 0) {
+        let path = queue.shift();
+        let node = path[path.length - 1];
+        if (node === endId) return path;
+        for (let neighbor of waypoints[node].edges) {
+            if (!visited.has(neighbor)) {
+                visited.add(neighbor);
+                queue.push([...path, neighbor]);
+            }
+        }
+    }
+    return [];
+}
+
 // --- CREWMATE ENGINE ---
 class Crewmate {
     constructor(x, y, isPlayer, colorName) {
@@ -64,8 +108,13 @@ class Crewmate {
         this.isDead = false; this.isEjected = false; this.isCleanedUp = false; 
         this.killer = null; 
         
-        this.vx = isPlayer ? 0 : (Math.random() > 0.5 ? 2.5 : -2.5);
-        this.vy = isPlayer ? 0 : (Math.random() > 0.5 ? 2.5 : -2.5);
+        // Navigation properties
+        this.speed = isPlayer ? 5 : 3;
+        this.path = [];
+        this.targetNode = null;
+        this.waitTimer = 0;
+        this.goingToFixLights = false;
+
         this.isMoving = false; this.animTimer = 0; this.showWalkFrame = false;
         this.memory = {}; 
     }
@@ -74,28 +123,83 @@ class Crewmate {
         if (this.isDead || this.isEjected || gamePaused || gameWon) return; 
         this.isMoving = false;
 
-        let nx = this.x; let ny = this.y;
-
         if (this.isPlayer) {
-            if (keys['KeyW']) { ny -= 5; this.isMoving = true; }
-            if (keys['KeyS']) { ny += 5; this.isMoving = true; }
-            if (keys['KeyA']) { nx -= 5; this.isMoving = true; }
-            if (keys['KeyD']) { nx += 5; this.isMoving = true; }
+            let nx = this.x; let ny = this.y;
+            if (keys['KeyW']) { ny -= this.speed; this.isMoving = true; }
+            if (keys['KeyS']) { ny += this.speed; this.isMoving = true; }
+            if (keys['KeyA']) { nx -= this.speed; this.isMoving = true; }
+            if (keys['KeyD']) { nx += this.speed; this.isMoving = true; }
+            if (!checkCollision(nx, ny, drawSize)) { this.x = nx; this.y = ny; }
         } else {
-            nx += this.vx; ny += this.vy; this.isMoving = true; 
-            if (checkCollision(nx, ny, drawSize)) {
-                this.vx *= -1; this.vy *= -1; 
-                nx = this.x; ny = this.y; 
+            // --- AI PATHFINDING LOGIC ---
+            
+            // 1. Check Sabotage Interruptions
+            if (lightsOut && !this.goingToFixLights) {
+                this.goingToFixLights = true;
+                let start = getClosestNode(this.x, this.y);
+                let pathIds = getPath(start, 5); // Node 5 is Electrical
+                pathIds.shift();
+                this.path = pathIds;
+                this.targetNode = this.path.length > 0 ? waypoints[this.path[0]] : waypoints[5];
+            } else if (!lightsOut) {
+                this.goingToFixLights = false;
+            }
+
+            // 2. Fixing Lights
+            if (this.goingToFixLights && Math.hypot(this.x - waypoints[5].x, this.y - waypoints[5].y) < 100) {
+                this.isMoving = false;
+                if (Math.random() < 0.01) { // Random chance to fix per frame
+                    lightsOut = false; visionRadius = 500; closeTask();
+                }
+                return;
+            }
+
+            // 3. Follow the Route
+            if (this.waitTimer > 0) {
+                this.waitTimer--;
+                this.isMoving = false;
+            } else if (this.targetNode) {
+                let dx = this.targetNode.x - this.x;
+                let dy = this.targetNode.y - this.y;
+                let dist = Math.hypot(dx, dy);
+
+                if (dist < 10) {
+                    this.path.shift(); // Remove reached node
+                    if (this.path.length > 0) {
+                        this.targetNode = waypoints[this.path[0]]; // Look to next node
+                    } else {
+                        this.targetNode = null; // Reached final destination
+                        this.waitTimer = 30 + Math.random() * 90; // Stand still to "do task"
+                    }
+                } else {
+                    let angle = Math.atan2(dy, dx);
+                    let nx = this.x + Math.cos(angle) * this.speed;
+                    let ny = this.y + Math.sin(angle) * this.speed;
+
+                    if (!checkCollision(nx, ny, drawSize)) {
+                        this.x = nx; this.y = ny; this.isMoving = true;
+                    } else {
+                        this.isMoving = false; // Blocked by wall or closed door, wait patiently
+                    }
+                }
+            } else {
+                // 4. Assign New Destination
+                let start = getClosestNode(this.x, this.y);
+                let target = Math.floor(Math.random() * waypoints.length);
+                let pathIds = getPath(start, target);
+                pathIds.shift();
+                this.path = pathIds;
+                this.targetNode = this.path.length > 0 ? waypoints[this.path[0]] : waypoints[target];
             }
         }
 
-        if (!checkCollision(nx, ny, drawSize)) { this.x = nx; this.y = ny; }
-
+        // Animation Toggle
         if (this.isMoving) {
             this.animTimer++;
             if (this.animTimer > 8) { this.showWalkFrame = !this.showWalkFrame; this.animTimer = 0; }
         } else { this.showWalkFrame = false; }
 
+        // Bot Memory (Sight)
         if (!this.isPlayer && !lightsOut) {
             [player, ...bots].forEach(other => {
                 if (other !== this && !other.isDead && !other.isEjected) {
@@ -120,12 +224,16 @@ class Crewmate {
     }
 }
 
-const player = new Crewmate(200, 200, true, 'Red');
+// Spawn bots exactly on waypoints so they don't spawn inside walls
+const player = new Crewmate(waypoints[4].x, waypoints[4].y, true, 'Red');
 const bots = [
-    new Crewmate(200, 800, false, 'Blue'), new Crewmate(1200, 500, false, 'Green'),
-    new Crewmate(1600, 500, false, 'Yellow'), new Crewmate(800, 1200, false, 'Pink'),
-    new Crewmate(1600, 1200, false, 'Cyan'), new Crewmate(100, 1300, false, 'Black'),
-    new Crewmate(800, 200, false, 'White'), new Crewmate(1500, 800, false, 'Orange')
+    new Crewmate(waypoints[0].x, waypoints[0].y, false, 'Blue'),
+    new Crewmate(waypoints[1].x, waypoints[1].y, false, 'Green'),
+    new Crewmate(waypoints[5].x, waypoints[5].y, false, 'Yellow'),
+    new Crewmate(waypoints[8].x, waypoints[8].y, false, 'Pink'),
+    new Crewmate(waypoints[9].x, waypoints[9].y, false, 'Cyan'),
+    new Crewmate(waypoints[10].x, waypoints[10].y, false, 'Black'),
+    new Crewmate(waypoints[7].x, waypoints[7].y, false, 'Orange')
 ];
 
 // --- UI & SABOTAGE MAP LOGIC ---
@@ -409,7 +517,6 @@ function gameLoop() {
     if (killCooldown > 0) {
         killBtn.className = 'action-btn cooldown'; killBtn.innerText = killCooldown;
     } else {
-        // THE BUG FIX IS HERE: b.y instead of bot.y
         let canKill = bots.some(b => !b.isDead && !b.isEjected && Math.hypot(b.x - player.x, b.y - player.y) < 90);
         killBtn.className = (canKill && !gamePaused && !lightsOut) ? 'action-btn active-kill' : 'action-btn';
         killBtn.innerText = 'KILL (E)';
@@ -466,7 +573,7 @@ function gameLoop() {
     ctx.fillText("⚡", elecPanel.x + elecPanel.w/2, elecPanel.y + elecPanel.h/2 + 7);
     if (lightsOut) {
         ctx.fillStyle = "rgba(255, 71, 71, 0.5)";
-        ctx.beginPath(); ctx.arc(elecPanel.x + elecPanel.w/2, elecPanel.y - 20, 15 + Math.sin(now/200)*5, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(elecPanel.x + elecPanel.w/2, elecPanel.y - 20, 15 + Math.sin(Date.now()/200)*5, 0, Math.PI*2); ctx.fill();
     }
 
     let allEntities = [...bots, player];
