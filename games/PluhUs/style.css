@@ -329,3 +329,27 @@ canvas {
 .sabo-icon.lights-icon { background: #e67e22; }
 .sabo-icon.door-icon { background: #e74c3c; font-size: 20px; }
 .sabo-icon.cooldown { filter: grayscale(100%); opacity: 0.5; pointer-events: none; }
+/* --- NEW: QUICK CHAT STYLES --- */
+#quick-chat-ui {
+    display: flex; 
+    gap: 10px; 
+    margin-bottom: 15px;
+}
+
+.chat-select {
+    flex-grow: 1;
+    padding: 10px;
+    border-radius: 8px;
+    border: 4px solid #526873;
+    background: #eef2f5;
+    font-family: 'Varela Round', sans-serif;
+    font-size: 16px;
+    color: #222;
+    outline: none;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.chat-select:focus {
+    border-color: #3498db;
+}
