@@ -11,6 +11,24 @@ const drawSize = 60;
 let gamePaused = false; 
 let gameWon = false; 
 
+// --- GAME MODE LOGIC ---
+let gameMode = localStorage.getItem('pluhus_mode') || 'random';
+
+window.toggleGameMode = function() {
+    gameMode = (gameMode === 'random') ? 'always_impostor' : 'random';
+    localStorage.setItem('pluhus_mode', gameMode);
+    location.reload(); // Instantly restart with new mode
+}
+
+// Update the button text as soon as the file loads
+window.addEventListener('DOMContentLoaded', () => {
+    const modeBtn = document.getElementById('mode-toggle');
+    if (modeBtn) {
+        modeBtn.innerText = gameMode === 'random' ? "Mode: Random Role" : "Mode: Always Impostor";
+        if (gameMode === 'always_impostor') modeBtn.style.borderColor = "#ff4747";
+    }
+});
+
 // --- TIMERS & COOLDOWNS ---
 let killCooldown = 15; 
 let globalSabotageCooldown = 0; 
@@ -28,17 +46,14 @@ const walls = [
     {x: 0, y: 0, w: 50, h: WORLD_H}, 
     {x: WORLD_W-50, y: 0, w: 50, h: WORLD_H}, 
     
-    // Left Hallway (Reactor)
     {x: 400, y: 0, w: 100, h: 550}, 
     {x: 400, y: 850, w: 100, h: 650}, 
     
-    // Right Room (Admin)
     {x: 1000, y: 300, w: 600, h: 100}, 
     {x: 1000, y: 1000, w: 600, h: 100}, 
     {x: 1000, y: 400, w: 100, h: 150}, 
     {x: 1000, y: 850, w: 100, h: 150}, 
 
-    // Top Middle (Electrical)
     {x: 800, y: 0, w: 100, h: 300},
     {x: 1100, y: 0, w: 100, h: 300}
 ];
@@ -61,19 +76,19 @@ function checkCollision(nx, ny, size) {
     return false;
 }
 
-// --- AI PATHFINDING GRAPH (ORTHOGONAL FIX) ---
+// --- AI PATHFINDING GRAPH ---
 const waypoints = [
-    { id: 0, x: 250, y: 300, edges: [2] },         // Left Top
-    { id: 1, x: 250, y: 1200, edges: [2] },        // Left Bot
-    { id: 2, x: 250, y: 700, edges: [0, 1, 3] },   // Left Center
-    { id: 3, x: 550, y: 700, edges: [2, 4] },      // Mid-Left Hall
-    { id: 4, x: 800, y: 700, edges: [3, 6, 10] },  // Center Hall
-    { id: 5, x: 1000, y: 150, edges: [6] },        // Electrical Box
-    { id: 6, x: 1000, y: 700, edges: [4, 5, 7] },  // Outside Admin / Below Elec
-    { id: 7, x: 1150, y: 700, edges: [6, 8, 9] },  // Inside Admin
-    { id: 8, x: 1450, y: 500, edges: [7] },        // Admin Top
-    { id: 9, x: 1450, y: 900, edges: [7] },        // Admin Bot
-    { id: 10, x: 800, y: 1300, edges: [4] }        // Bottom Hall
+    { id: 0, x: 250, y: 300, edges: [2] },         
+    { id: 1, x: 250, y: 1200, edges: [2] },        
+    { id: 2, x: 250, y: 700, edges: [0, 1, 3] },   
+    { id: 3, x: 550, y: 700, edges: [2, 4] },      
+    { id: 4, x: 800, y: 700, edges: [3, 6, 10] },  
+    { id: 5, x: 1000, y: 150, edges: [6] },        
+    { id: 6, x: 1000, y: 700, edges: [4, 5, 7] },  
+    { id: 7, x: 1150, y: 700, edges: [6, 8, 9] },  
+    { id: 8, x: 1450, y: 500, edges: [7] },        
+    { id: 9, x: 1450, y: 900, edges: [7] },        
+    { id: 10, x: 800, y: 1300, edges: [4] }        
 ];
 
 function getClosestNode(x, y) {
@@ -111,7 +126,10 @@ class Crewmate {
         this.isDead = false; this.isEjected = false; this.isCleanedUp = false; 
         this.killer = null; 
         
-        this.speed = isPlayer ? 5 : 3;
+        this.isImpostor = false;
+        this.internalKillCooldown = 600; 
+        
+        this.speed = isPlayer ? 5 : 3.5;
         this.path = [];
         this.targetNode = null;
         this.waitTimer = 0;
@@ -135,7 +153,49 @@ class Crewmate {
             if (keys['KeyD']) { nx += this.speed; this.isMoving = true; }
             if (!checkCollision(nx, ny, drawSize)) { this.x = nx; this.y = ny; }
         } else {
-            if (lightsOut && !this.goingToFixLights) {
+            if (this.isImpostor) {
+                if (this.internalKillCooldown > 0) this.internalKillCooldown--;
+                
+                if (this.internalKillCooldown <= 0) {
+                    let aliveCrew = [player, ...bots].filter(c => !c.isDead && !c.isEjected && !c.isImpostor);
+                    let target = null;
+                    let minDist = Infinity;
+                    
+                    aliveCrew.forEach(c => {
+                        let d = Math.hypot(c.x - this.x, c.y - this.y);
+                        if (d < minDist) { minDist = d; target = c; }
+                    });
+
+                    if (target && minDist < 250) {
+                        let witnesses = aliveCrew.filter(c => c !== target && Math.hypot(c.x - this.x, c.y - this.y) < 400);
+                        
+                        if (witnesses.length === 0 || lightsOut) {
+                            if (minDist < 90) {
+                                target.isDead = true;
+                                target.killer = this;
+                                this.internalKillCooldown = 900; 
+                                checkWinCondition();
+                                
+                                this.targetNode = null; 
+                                this.path = [];
+                                this.waitTimer = 0;
+                            } else {
+                                let angle = Math.atan2(target.y - this.y, target.x - this.x);
+                                let nx = this.x + Math.cos(angle) * this.speed;
+                                let ny = this.y + Math.sin(angle) * this.speed;
+                                if (!checkCollision(nx, ny, drawSize)) {
+                                    this.x = nx; this.y = ny; this.isMoving = true;
+                                    this.animTimer++;
+                                    if (this.animTimer > 8) { this.showWalkFrame = !this.showWalkFrame; this.animTimer = 0; }
+                                }
+                                return; 
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if (lightsOut && !this.goingToFixLights && !this.isImpostor) {
                 this.goingToFixLights = true;
                 let start = getClosestNode(this.x, this.y);
                 let pathIds = getPath(start, 5); 
@@ -164,7 +224,6 @@ class Crewmate {
                 
                 if (isFinalNode) {
                     if (!this.finalOffsetX) {
-                        // Reduced wander variance to prevent them from pushing into walls
                         this.finalOffsetX = (Math.random() - 0.5) * 60; 
                         this.finalOffsetY = (Math.random() - 0.5) * 60;
                     }
@@ -195,14 +254,12 @@ class Crewmate {
                     if (!checkCollision(nx, ny, drawSize)) {
                         this.x = nx; this.y = ny; this.isMoving = true;
                     } else {
-                        // Wall sliding
                         if (!checkCollision(nx, this.y, drawSize)) {
                             this.x = nx; this.isMoving = true;
                         } else if (!checkCollision(this.x, ny, drawSize)) {
                             this.y = ny; this.isMoving = true;
                         } else {
                             this.isMoving = false; 
-                            // Reduced chance to abandon path from 5% to 1% to make them more persistent at doors
                             if (Math.random() < 0.01) this.targetNode = null; 
                         }
                     }
@@ -239,7 +296,14 @@ class Crewmate {
 
     draw(ctx) {
         if (this.isEjected) return; 
-        ctx.fillStyle = "white"; ctx.font = "14px 'Varela Round'"; ctx.textAlign = "center";
+        
+        if (this.isImpostor && player.isImpostor) {
+            ctx.fillStyle = "#ff4747";
+        } else {
+            ctx.fillStyle = "white"; 
+        }
+        ctx.font = "bold 14px 'Varela Round'"; 
+        ctx.textAlign = "center";
         ctx.fillText(this.colorName, this.x + drawSize/2, this.y - 10);
 
         if (this.isDead && !this.isCleanedUp) {
@@ -261,9 +325,41 @@ const bots = [
     new Crewmate(waypoints[7].x, waypoints[7].y, false, 'Orange')
 ];
 
+// --- ROLE ASSIGNMENT ---
+function assignRoles() {
+    let allEntities = [player, ...bots];
+    allEntities.forEach(e => e.isImpostor = false);
+    
+    if (gameMode === 'always_impostor') {
+        player.isImpostor = true;
+    } else {
+        let chosenImpostor = allEntities[Math.floor(Math.random() * allEntities.length)];
+        chosenImpostor.isImpostor = true;
+    }
+
+    const taskHeader = document.querySelector('#task-list h3');
+    const taskDesc = document.querySelector('#task-list p');
+    
+    if (player.isImpostor) {
+        taskHeader.innerText = "Impostor";
+        taskHeader.style.color = "#ff4747";
+        taskDesc.innerText = "Sabotage and kill everyone.";
+        document.getElementById('kill-btn').style.display = 'flex';
+        document.getElementById('sabotage-btn').style.display = 'flex';
+    } else {
+        taskHeader.innerText = "Crewmate";
+        taskHeader.style.color = "#3498db";
+        taskDesc.innerText = "Find the impostor and fix sabotages.";
+        document.getElementById('kill-btn').style.display = 'none';
+        document.getElementById('sabotage-btn').style.display = 'none';
+    }
+}
+
+assignRoles();
+
 // --- UI & SABOTAGE MAP LOGIC ---
 window.toggleSabotageMap = function() {
-    if (gamePaused || player.isDead) return;
+    if (gamePaused || player.isDead || !player.isImpostor) return;
     isSabotageMapOpen = !isSabotageMapOpen;
     document.getElementById('sabotage-layer').style.display = isSabotageMapOpen ? 'flex' : 'none';
 }
@@ -375,24 +471,24 @@ function triggerReport(reporter, deadBody) {
     delay += 1000;
 
     let selfReportAccusers = 0;
-    let isSelfReport = (reporter === player && deadBody.killer === player);
+    let isSelfReport = (reporter === deadBody.killer);
     let mainAccuser = null;
 
     if (isSelfReport) {
         alivePlayers.forEach(b => {
-            if (!b.isPlayer && b.memory[player.colorName] > Date.now() - 15000 && b.memory[deadBody.colorName] > Date.now() - 15000) {
+            if (!b.isPlayer && b.memory[reporter.colorName] > Date.now() - 15000 && b.memory[deadBody.colorName] > Date.now() - 15000) {
                 selfReportAccusers++;
                 
                 if (!mainAccuser) {
                     mainAccuser = b.colorName; 
-                    setTimeout(() => { addChatMsg(b.colorName, `SELF REPORT! I saw ${player.colorName} with them!`); }, delay);
+                    setTimeout(() => { addChatMsg(b.colorName, `SELF REPORT! I saw ${reporter.colorName} with them!`); }, delay);
                 } else {
                     let currentAccuser = mainAccuser; 
                     setTimeout(() => {
                         let agreements = [
                             `Yeah, i agree, ${currentAccuser}`,
                             `listen to ${currentAccuser}`,
-                            `${player.colorName} is pretty sus`
+                            `${reporter.colorName} is pretty sus`
                         ];
                         let phrase = agreements[Math.floor(Math.random() * agreements.length)];
                         addChatMsg(b.colorName, phrase);
@@ -447,24 +543,24 @@ function triggerReport(reporter, deadBody) {
         alivePlayers.forEach(p => {
             let btn = document.createElement('button');
             btn.className = 'vote-btn'; btn.innerText = `Vote ${p.colorName}`;
-            btn.onclick = () => castVote(p, suspect, alivePlayers, selfReportAccusers);
+            btn.onclick = () => castVote(p, suspect, alivePlayers, selfReportAccusers, reporter);
             btnContainer.appendChild(btn);
         });
         let skipBtn = document.createElement('button');
         skipBtn.className = 'vote-btn skip-btn'; skipBtn.innerText = "Skip Vote";
-        skipBtn.onclick = () => castVote(null, suspect, alivePlayers, selfReportAccusers);
+        skipBtn.onclick = () => castVote(null, suspect, alivePlayers, selfReportAccusers, reporter);
         btnContainer.appendChild(skipBtn);
     }, delay);
 }
 
-function castVote(playerChoice, suspect, alivePlayers, selfReportAccusers) {
+function castVote(playerChoice, suspect, alivePlayers, selfReportAccusers, reporter) {
     let votes = { "Skip": 0 };
     alivePlayers.forEach(p => votes[p.colorName] = 0);
     if (playerChoice) votes[playerChoice.colorName]++; else votes["Skip"]++;
 
     alivePlayers.forEach(p => {
         if (!p.isPlayer) {
-            if (selfReportAccusers >= 3) votes['Red']++; 
+            if (selfReportAccusers >= 3) votes[reporter.colorName]++; 
             else if (suspect.colorName !== "Nobody") votes[suspect.colorName]++;
             else votes["Skip"]++;
         }
@@ -495,9 +591,20 @@ function castVote(playerChoice, suspect, alivePlayers, selfReportAccusers) {
 
 function checkWinCondition() {
     if (gameWon) return;
-    if (player.isEjected) { triggerEnd("CREWMATES WIN", "#3498db"); return; }
-    let aliveCount = bots.filter(b => !b.isDead && !b.isEjected).length + (player.isDead || player.isEjected ? 0 : 1);
-    if (aliveCount <= 2 && !player.isEjected) { triggerEnd("IMPOSTOR WINS", "#ff4747"); }
+    
+    let theImpostor = [player, ...bots].find(e => e.isImpostor);
+    
+    if (theImpostor.isEjected) { 
+        triggerEnd("CREWMATES WIN", "#3498db"); 
+        return; 
+    }
+    
+    let aliveCrew = [player, ...bots].filter(b => !b.isDead && !b.isEjected && !b.isImpostor).length;
+    let aliveImps = theImpostor.isDead || theImpostor.isEjected ? 0 : 1;
+    
+    if (aliveCrew <= aliveImps && aliveImps > 0) { 
+        triggerEnd("IMPOSTOR WINS", "#ff4747"); 
+    }
 }
 
 function triggerEnd(message, color) {
@@ -516,7 +623,7 @@ window.addEventListener('keydown', (e) => {
     if (e.code === 'Space') e.preventDefault(); 
     if (gamePaused || gameWon || player.isDead || player.isEjected) return; 
 
-    if (e.code === 'KeyF') {
+    if (e.code === 'KeyF' && player.isImpostor) {
         toggleSabotageMap();
     }
 
@@ -525,7 +632,7 @@ window.addEventListener('keydown', (e) => {
         if (lightsOut && nearPanel) openLightsTask();
     }
 
-    if (e.code === 'KeyE' && killCooldown === 0 && !lightsOut && !isSabotageMapOpen) { 
+    if (e.code === 'KeyE' && player.isImpostor && killCooldown === 0 && !lightsOut && !isSabotageMapOpen) { 
         for (let bot of bots) {
             if (!bot.isDead && !bot.isEjected && Math.hypot(bot.x - player.x, bot.y - player.y) < 90) { 
                 bot.isDead = true; bot.killer = player; 
@@ -544,7 +651,6 @@ window.addEventListener('keydown', (e) => {
     }
 });
 
-// --- NAVIGATION ARROW ---
 function drawNavigationArrow() {
     let targetX = elecPanel.x + elecPanel.w / 2;
     let targetY = elecPanel.y + elecPanel.h / 2;
@@ -601,19 +707,21 @@ function gameLoop() {
     let nearPanel = Math.hypot(player.x - (elecPanel.x + elecPanel.w/2), player.y - (elecPanel.y + elecPanel.h/2)) < 150;
     document.getElementById('use-btn').className = (lightsOut && nearPanel && !gamePaused) ? 'action-btn active-use' : 'action-btn';
 
-    const killBtn = document.getElementById('kill-btn');
-    if (killCooldown > 0) {
-        killBtn.className = 'action-btn cooldown'; killBtn.innerText = killCooldown;
-    } else {
-        let canKill = bots.some(b => !b.isDead && !b.isEjected && Math.hypot(b.x - player.x, b.y - player.y) < 90);
-        killBtn.className = (canKill && !gamePaused && !lightsOut) ? 'action-btn active-kill' : 'action-btn';
-        killBtn.innerText = 'KILL (E)';
+    if (player.isImpostor) {
+        const killBtn = document.getElementById('kill-btn');
+        if (killCooldown > 0) {
+            killBtn.className = 'action-btn cooldown'; killBtn.innerText = killCooldown;
+        } else {
+            let canKill = bots.some(b => !b.isDead && !b.isEjected && Math.hypot(b.x - player.x, b.y - player.y) < 90);
+            killBtn.className = (canKill && !gamePaused && !lightsOut) ? 'action-btn active-kill' : 'action-btn';
+            killBtn.innerText = 'KILL (E)';
+        }
     }
 
     let canReport = bots.some(b => b.isDead && !b.isCleanedUp && Math.hypot(player.x - b.x, player.y - b.y) < 120);
     document.getElementById('report-btn').className = canReport && !gamePaused ? 'action-btn active-report' : 'action-btn';
 
-    if (isSabotageMapOpen) {
+    if (isSabotageMapOpen && player.isImpostor) {
         document.getElementById('sabo-lights').className = (globalSabotageCooldown > 0 || lightsOut) ? 'sabo-icon lights-icon cooldown' : 'sabo-icon lights-icon';
         doors.forEach(d => {
             let dBtn = document.getElementById('sabo-' + d.id);
