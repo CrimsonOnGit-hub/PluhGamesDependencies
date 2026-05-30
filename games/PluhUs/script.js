@@ -97,40 +97,44 @@ function checkCollision(nx, ny, size) {
     return false;
 }
 
-// --- DYNAMIC SPRITE RECOLORER ---
+// --- DYNAMIC SPRITE RECOLORER (NO LIBRARIES REQUIRED) ---
+function darkenHex(hex, percent) {
+    let r = parseInt(hex.slice(1, 3), 16);
+    let g = parseInt(hex.slice(3, 5), 16);
+    let b = parseInt(hex.slice(5, 7), 16);
+    r = Math.floor(r * (1 - percent));
+    g = Math.floor(g * (1 - percent));
+    b = Math.floor(b * (1 - percent));
+    return "#" + (1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1);
+}
+
 function getRecoloredSprite(img, suitColor) {
     let tCanvas = document.createElement('canvas');
     tCanvas.width = drawSize; 
     tCanvas.height = drawSize;
     let tCtx = tCanvas.getContext('2d');
     
-    // Convert hex suit color to RGB
     const suitRgb = parseInt(suitColor.slice(1), 16);
     const suitR = (suitRgb >> 16) & 255;
     const suitG = (suitRgb >> 8) & 255;
     const suitB = suitRgb & 255;
 
-    // Convert hex backpack color (15% darker) to RGB
-    const backHex = chroma(suitColor).darken(0.15).hex();
+    const backHex = darkenHex(suitColor, 0.35); // 35% darker for the backpack shadow
     const backRgb = parseInt(backHex.slice(1), 16);
     const backR = (backRgb >> 16) & 255;
     const backG = (backRgb >> 8) & 255;
     const backB = backRgb & 255;
 
-    // Draw base sprite to get pixel data
     tCtx.drawImage(img, 0, 0, drawSize, drawSize);
     const imageData = tCtx.getImageData(0, 0, drawSize, drawSize);
     const pixels = imageData.data;
 
-    // Loop through pixels and swap target colors
     for (let i = 0; i < pixels.length; i += 4) {
-        // Red = 255, Green = 0, Blue = 0 for pure RED (suit body)
         if (pixels[i] === 255 && pixels[i+1] === 0 && pixels[i+2] === 0) {
             pixels[i]   = suitR;
             pixels[i+1] = suitG;
             pixels[i+2] = suitB;
         }
-        // Red = 0, Green = 0, Blue = 255 for pure BLUE (backpack)
         if (pixels[i] === 0 && pixels[i+1] === 0 && pixels[i+2] === 255) {
             pixels[i]   = backR;
             pixels[i+1] = backG;
@@ -194,7 +198,6 @@ class Crewmate {
         this.isDead = false; this.isEjected = false; this.isCleanedUp = false; 
         this.killer = null; 
         
-        // Color mapping for the dynamic recolorer
         const colorMap = {
             'Red': '#ff0000', 'Blue': '#1e90ff', 'Green': '#32cd32', 'Yellow': '#ffd700',
             'Pink': '#ff69b4', 'Cyan': '#00ffff', 'Black': '#555555', 'Orange': '#ff8c00'
@@ -388,8 +391,7 @@ class Crewmate {
     draw(ctx) {
         if (this.isEjected) return; 
 
-        // Generate colored sprites on-the-fly once images load
-        if (chroma && standImg.complete && standImg.naturalWidth > 0 && !this.tintedStand) {
+        if (standImg.complete && standImg.naturalWidth > 0 && !this.tintedStand) {
             this.tintedStand = getRecoloredSprite(standImg, this.colorHex);
             this.tintedWalk = getRecoloredSprite(walkImg, this.colorHex);
             this.tintedDead = getRecoloredSprite(deadImg, this.colorHex);
@@ -401,7 +403,6 @@ class Crewmate {
         if (this.inVent) ctx.globalAlpha = 0.4;
         if (this.lastDir === 'left') ctx.scale(-1, 1);
         
-        // Pick the correct dynamically colored sprite
         let currentImg = this.tintedStand || standImg;
         if (this.isDead && !this.isCleanedUp) currentImg = this.tintedDead || deadImg;
         else if (this.isMoving) currentImg = this.tintedWalk || walkImg;
@@ -869,6 +870,15 @@ function drawNavigationArrow() {
     ctx.restore();
 }
 
+function drawCrate(x, y, size) {
+    ctx.fillStyle = "rgba(0,0,0,0.4)"; ctx.fillRect(x+5, y+5, size, size);
+    ctx.fillStyle = "#8B5A2B"; ctx.fillRect(x, y, size, size);
+    ctx.lineWidth = 4; ctx.strokeStyle = "#5C3A21"; ctx.strokeRect(x+2, y+2, size-4, size-4);
+    ctx.beginPath(); ctx.moveTo(x+4, y+4); ctx.lineTo(x+size-4, y+size-4); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x+size-4, y+4); ctx.lineTo(x+4, y+size-4); ctx.stroke();
+    ctx.fillStyle = "#d2b48c"; ctx.fillRect(x + size/2 - 5, y, 10, size);
+}
+
 // --- RENDER ENGINE ---
 function gameLoop() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -945,43 +955,61 @@ function gameLoop() {
 
     ctx.fillStyle = "#2a2a2a"; ctx.fillRect(0, 0, WORLD_W, WORLD_H);
     
-    // --- ENVIRONMENTAL DECORATIONS ---
-    ctx.fillStyle = "#1a1a1a";
-    ctx.beginPath(); ctx.arc(250, 300, 100, 0, Math.PI*2); ctx.fill();
-    ctx.strokeStyle = "#0ff"; ctx.lineWidth = 10;
-    ctx.beginPath(); ctx.arc(250, 300, 80, 0, Math.PI*2); ctx.stroke();
-    ctx.fillStyle = "rgba(0, 255, 255, 0.3)";
-    ctx.beginPath(); ctx.arc(250, 300, 60 + Math.sin(Date.now()/300)*5, 0, Math.PI*2); ctx.fill();
+    // --- POLISHED ENVIRONMENTAL DECORATIONS ---
+    
+    // 1. Reactor Core
+    ctx.fillStyle = "#1a2530"; ctx.beginPath(); ctx.arc(250, 300, 120, 0, Math.PI*2); ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = "#111";
+    for(let i=130; i<=370; i+=20) { 
+        ctx.beginPath(); ctx.moveTo(i, 180); ctx.lineTo(i, 420); ctx.stroke(); 
+        ctx.beginPath(); ctx.moveTo(130, i-120+180); ctx.lineTo(370, i-120+180); ctx.stroke(); 
+    }
+    let radGrad = ctx.createRadialGradient(250, 300, 10, 250, 300, 90);
+    radGrad.addColorStop(0, "#ffffff"); radGrad.addColorStop(0.2, "#00ffff"); radGrad.addColorStop(1, "rgba(0, 100, 255, 0.1)");
+    ctx.fillStyle = radGrad; ctx.beginPath(); ctx.arc(250, 300, 90, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = "#088"; ctx.lineWidth = 15; ctx.beginPath(); ctx.arc(250, 300, 90, 0, Math.PI*2); ctx.stroke();
+    ctx.fillStyle = "#334"; ctx.fillRect(240, 200, 20, 30); ctx.fillRect(240, 370, 20, 30); ctx.fillRect(150, 290, 30, 20); ctx.fillRect(320, 290, 30, 20);
 
-    ctx.fillStyle = "#222";
-    ctx.fillRect(1150, 500, 250, 120); 
-    ctx.fillStyle = "#4caf50"; 
-    ctx.globalAlpha = 0.5 + Math.sin(Date.now()/500)*0.2;
-    ctx.fillRect(1170, 520, 210, 80);
-    ctx.globalAlpha = 1.0;
+    // 2. Admin Table & Hologram
+    if(ctx.roundRect) {
+        ctx.fillStyle = "#2a2e33"; ctx.beginPath(); ctx.roundRect(1140, 490, 270, 140, 20); ctx.fill();
+        ctx.fillStyle = "#1d2024"; ctx.beginPath(); ctx.roundRect(1150, 500, 250, 120, 15); ctx.fill();
+    } else {
+        ctx.fillStyle = "#2a2e33"; ctx.fillRect(1140, 490, 270, 140);
+        ctx.fillStyle = "#1d2024"; ctx.fillRect(1150, 500, 250, 120);
+    }
+    let holoBase = ctx.createRadialGradient(1275, 560, 10, 1275, 560, 60);
+    holoBase.addColorStop(0, "rgba(0, 255, 100, 0.5)"); holoBase.addColorStop(1, "rgba(0, 255, 100, 0)");
+    ctx.fillStyle = holoBase; ctx.fillRect(1170, 500, 210, 120);
+    let t = Date.now() / 1000;
+    ctx.strokeStyle = "rgba(0, 255, 100, 0.5)"; ctx.lineWidth = 2;
+    if(ctx.ellipse) {
+        ctx.beginPath(); ctx.ellipse(1275, 560, 80 + Math.sin(t)*10, 40 + Math.sin(t)*5, 0, 0, Math.PI*2); ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(1275, 560, 40 - Math.sin(t)*5, 20 - Math.sin(t)*2.5, 0, 0, Math.PI*2); ctx.stroke();
+    }
 
-    ctx.fillStyle = "#654321"; 
-    ctx.fillRect(830, 1320, 90, 90);
-    ctx.fillStyle = "#8B5A2B"; 
-    ctx.fillRect(940, 1280, 100, 100);
-    ctx.fillStyle = "#A0522D"; 
-    ctx.fillRect(900, 1380, 80, 80);
-    ctx.fillStyle = "#d2b48c"; 
-    ctx.fillRect(830, 1360, 90, 10);
-    ctx.fillRect(940, 1325, 100, 10);
-    ctx.fillRect(935, 1380, 10, 80);
+    // 3. Storage Crates
+    drawCrate(830, 1310, 80);
+    drawCrate(920, 1280, 100);
+    drawCrate(880, 1370, 90);
 
-    ctx.fillStyle = "#ffd700";
-    ctx.fillRect(850, 250, 200, 20);
-    ctx.fillStyle = "#000";
-    for(let i=0; i<200; i+=20) ctx.fillRect(850+i, 250, 10, 20);
-    ctx.fillStyle = "#333";
-    ctx.fillRect(820, 50, 60, 150);
-    ctx.fillStyle = (Math.floor(Date.now()/500) % 2 === 0) ? "#f00" : "#500";
-    ctx.fillRect(840, 70, 10, 10);
-    ctx.fillStyle = (Math.floor(Date.now()/800) % 2 === 0) ? "#0f0" : "#050";
-    ctx.fillRect(840, 100, 10, 10);
+    // 4. Electrical Hazard Stripes & Server
+    ctx.save();
+    ctx.beginPath(); ctx.rect(850, 250, 200, 20); ctx.clip();
+    ctx.fillStyle = "#ffd700"; ctx.fillRect(850, 250, 200, 20);
+    ctx.fillStyle = "#111";
+    for(let i=-20; i<250; i+=30) {
+        ctx.beginPath(); ctx.moveTo(850+i, 250); ctx.lineTo(850+i+20, 250); ctx.lineTo(850+i+10, 270); ctx.lineTo(850+i-10, 270); ctx.fill();
+    }
+    ctx.restore();
+    ctx.fillStyle = "#2a2d33"; ctx.fillRect(810, 50, 70, 160); 
+    ctx.fillStyle = "#3b4048"; ctx.fillRect(815, 55, 60, 150); 
+    ctx.fillStyle = "#111"; ctx.fillRect(825, 65, 40, 40); ctx.fillRect(825, 115, 40, 80); 
+    ctx.fillStyle = (Math.floor(Date.now()/500) % 2 === 0) ? "#f00" : "#500"; ctx.beginPath(); ctx.arc(830, 60, 3, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = (Math.floor(Date.now()/300) % 2 === 0) ? "#0f0" : "#050"; ctx.beginPath(); ctx.arc(840, 60, 3, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = (Math.floor(Date.now()/800) % 2 === 0) ? "#00f" : "#005"; ctx.beginPath(); ctx.arc(850, 60, 3, 0, Math.PI*2); ctx.fill();
 
+    // Vents
     ctx.fillStyle = "#4a4a4a";
     ctx.strokeStyle = "#111";
     ctx.lineWidth = 4;
