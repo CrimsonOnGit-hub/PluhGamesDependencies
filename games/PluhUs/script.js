@@ -6,14 +6,67 @@ window.onresize = () => { canvas.width = window.innerWidth; canvas.height = wind
 const standImg = new Image(); standImg.src = 'Stand_mogus.png';
 const walkImg = new Image();  walkImg.src = 'walk_mogus_1.png';
 const deadImg = new Image();  deadImg.src = 'Death_mogus.png';
+const mapBg = new Image(); 
 
 const drawSize = 60; 
 let gamePaused = false; 
 let gameWon = false; 
 
+// --- DYNAMIC DATA-DRIVEN MAP VARS ---
+let WORLD_W = 2000;
+let WORLD_H = 1500;
+let walls = [];
+let doors = [];
+let elecPanel = { x: 0, y: 0, w: 0, h: 0 };
+let vents = [];
+let waypoints = [];
+let player;
+let bots = [];
+
+window.globalPlayerSpeed = 5;
+window.globalBotSpeed = 3.5;
+
+// --- DYNAMIC VENT UI INJECTION ---
+const ventUIStyle = document.createElement('style');
+ventUIStyle.innerHTML = `
+    .vent-arrow {
+        background: none; border: none; color: rgba(255,255,255,0.5); 
+        font-size: 80px; cursor: pointer; text-shadow: 0 0 15px #000;
+        pointer-events: auto; transition: transform 0.1s, color 0.1s;
+        padding: 0 40px;
+    }
+    .vent-arrow:hover { color: rgba(255,255,255,1); transform: scale(1.2); }
+    .vent-arrow:active { transform: scale(0.9); }
+`;
+document.head.appendChild(ventUIStyle);
+
+const ventUI = document.createElement('div');
+ventUI.id = 'vent-ui';
+ventUI.style.cssText = 'display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 400px; justify-content: space-between; z-index: 1000; pointer-events: none;';
+ventUI.innerHTML = `
+    <button id="vent-left" class="vent-arrow">◀</button>
+    <button id="vent-right" class="vent-arrow">▶</button>
+`;
+document.body.appendChild(ventUI);
+
+document.getElementById('vent-left').onclick = () => window.navigateVent(-1);
+document.getElementById('vent-right').onclick = () => window.navigateVent(1);
+
 // --- DEV MENU SYSTEM ---
 window.devVignetteEnabled = true;
 let secretBuffer = "";
+
+window.updateSpeeds = function() {
+    window.globalPlayerSpeed = parseFloat(document.getElementById('p-speed').value);
+    window.globalBotSpeed = parseFloat(document.getElementById('b-speed').value);
+    document.getElementById('p-spd-val').innerText = window.globalPlayerSpeed;
+    document.getElementById('b-spd-val').innerText = window.globalBotSpeed;
+    if (player && bots.length > 0) {
+        [player, ...bots].forEach(c => {
+            c.speed = c.isPlayer ? window.globalPlayerSpeed : window.globalBotSpeed;
+        });
+    }
+};
 
 const devMenu = document.createElement('div');
 devMenu.id = 'dev-menu';
@@ -23,6 +76,13 @@ devMenu.innerHTML = `
     <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
         <input type="checkbox" id="dev-vignette" checked onchange="window.devVignetteEnabled = this.checked" style="accent-color: #0f0;"> 
         Enable Vignette (Fog)
+    </label>
+    <h4 style="margin: 15px 0 5px 0; font-size: 14px; border-bottom: 1px dashed #0f0; padding-bottom: 3px;">SPEED CONTROLS</h4>
+    <label style="display: flex; justify-content: space-between; font-size: 12px; margin-top: 5px;">
+        Player: <input type="range" id="p-speed" min="2" max="15" value="5" step="1" onchange="window.updateSpeeds()" style="width: 80px; margin: 0 10px;"> <span id="p-spd-val">5</span>
+    </label>
+    <label style="display: flex; justify-content: space-between; font-size: 12px; margin-top: 5px;">
+        Bots: <input type="range" id="b-speed" min="1" max="10" value="3.5" step="0.5" onchange="window.updateSpeeds()" style="width: 80px; margin: 0 10px;"> <span id="b-spd-val">3.5</span>
     </label>
     <div style="margin-top: 15px; text-align: right;">
         <button onclick="document.getElementById('dev-menu').style.display='none'" style="background: #111; color: #0f0; border: 1px solid #0f0; cursor: pointer; padding: 5px 15px; border-radius: 3px;">Close</button>
@@ -54,34 +114,9 @@ let lightsOut = false;
 let visionRadius = 500; 
 let isSabotageMapOpen = false;
 
-// --- MAP, WALLS & 4 DOORS ---
-const WORLD_W = 2000;
-const WORLD_H = 1500;
-const walls = [
-    {x: 0, y: 0, w: WORLD_W, h: 50}, {x: 0, y: WORLD_H-50, w: WORLD_W, h: 50}, 
-    {x: 0, y: 0, w: 50, h: WORLD_H}, {x: WORLD_W-50, y: 0, w: 50, h: WORLD_H}, 
-    {x: 400, y: 0, w: 100, h: 550}, {x: 400, y: 850, w: 100, h: 650}, 
-    {x: 1000, y: 300, w: 600, h: 100}, {x: 1000, y: 1000, w: 600, h: 100}, 
-    {x: 1000, y: 400, w: 100, h: 150}, {x: 1000, y: 850, w: 100, h: 150}, 
-    {x: 800, y: 0, w: 100, h: 300}, {x: 1100, y: 0, w: 100, h: 300}, 
-    {x: 800, y: 1200, w: 100, h: 300}, {x: 1100, y: 1200, w: 100, h: 300} 
-];
-
-const doors = [
-    { id: 'door-1', x: 400, y: 550, w: 100, h: 300, isClosed: false, closeTimer: 0, cooldown: 0 }, 
-    { id: 'door-2', x: 1000, y: 550, w: 100, h: 300, isClosed: false, closeTimer: 0, cooldown: 0 }, 
-    { id: 'door-3', x: 900, y: 250, w: 200, h: 50, isClosed: false, closeTimer: 0, cooldown: 0 },  
-    { id: 'door-4', x: 900, y: 1200, w: 200, h: 50, isClosed: false, closeTimer: 0, cooldown: 0 }  
-];
-
-const elecPanel = { x: 950, y: 50, w: 100, h: 60 };
-
-const vents = [
-    { x: 200, y: 250 },   
-    { x: 950, y: 200 },   
-    { x: 1300, y: 650 },  
-    { x: 200, y: 1200 }   
-];
+// Gaslight Mechanic Variables
+let gaslightCounters = {};
+let gaslightTarget = null;
 
 function checkCollision(nx, ny, size) {
     let padding = 5;
@@ -132,23 +167,6 @@ function getTintedSprite(img, suitHex) {
     return tCanvas;
 }
 
-// --- AI PATHFINDING GRAPH ---
-const waypoints = [
-    { id: 0, x: 250, y: 300, edges: [2] },         
-    { id: 1, x: 250, y: 1200, edges: [2] },        
-    { id: 2, x: 250, y: 700, edges: [0, 1, 3] },   
-    { id: 3, x: 550, y: 700, edges: [2, 4] },      
-    { id: 4, x: 800, y: 700, edges: [3, 6, 10] },  
-    { id: 5, x: 1000, y: 150, edges: [12] },       
-    { id: 6, x: 950, y: 700, edges: [4, 7, 12] },  
-    { id: 7, x: 1200, y: 700, edges: [6, 8, 9] },  
-    { id: 8, x: 1400, y: 500, edges: [7] },        
-    { id: 9, x: 1400, y: 900, edges: [7] },        
-    { id: 10, x: 950, y: 1100, edges: [4, 11] },   
-    { id: 11, x: 1000, y: 1350, edges: [10] },     
-    { id: 12, x: 950, y: 400, edges: [5, 6] }      
-];
-
 function getClosestNode(x, y) {
     let closest = 0; let min = Infinity;
     waypoints.forEach(wp => {
@@ -196,7 +214,7 @@ class Crewmate {
         this.isImpostor = false;
         this.internalKillCooldown = 600; 
         
-        this.speed = isPlayer ? 5 : 3.5;
+        this.speed = isPlayer ? window.globalPlayerSpeed : window.globalBotSpeed;
         this.path = [];
         this.targetNode = null;
         this.waitTimer = 0;
@@ -368,12 +386,28 @@ class Crewmate {
                 }
             } else {
                 let start = getClosestNode(this.x, this.y);
+                let validTargets = waypoints.filter(wp => wp.id !== start && Math.hypot(wp.x - this.x, wp.y - this.y) > 500);
                 let target;
-                do { target = Math.floor(Math.random() * waypoints.length); } while (target === start && waypoints.length > 1);
+                if (validTargets.length > 0) {
+                    target = validTargets[Math.floor(Math.random() * validTargets.length)].id;
+                } else {
+                    do { target = Math.floor(Math.random() * waypoints.length); } while (target === start && waypoints.length > 1);
+                }
+                
                 let pathIds = getPath(start, target); pathIds.shift();
                 this.path = pathIds;
                 this.targetNode = this.path.length > 0 ? waypoints[this.path[0]] : waypoints[target];
             }
+        }
+        
+        if (!this.isPlayer && !lightsOut && !this.inVent) {
+            [player, ...bots].forEach(other => {
+                if (other !== this && !other.isDead && !other.isEjected && !other.inVent) {
+                    if (Math.hypot(this.x - other.x, this.y - other.y) < 400) {
+                        this.memory[other.colorName] = Date.now(); 
+                    }
+                }
+            });
         }
     }
 
@@ -424,17 +458,6 @@ class Crewmate {
     }
 }
 
-const player = new Crewmate(waypoints[4].x, waypoints[4].y, true, 'Red');
-const bots = [
-    new Crewmate(waypoints[0].x, waypoints[0].y, false, 'Blue'),
-    new Crewmate(waypoints[1].x, waypoints[1].y, false, 'Green'),
-    new Crewmate(waypoints[5].x, waypoints[5].y, false, 'Yellow'),
-    new Crewmate(waypoints[8].x, waypoints[8].y, false, 'Pink'),
-    new Crewmate(waypoints[9].x, waypoints[9].y, false, 'Cyan'),
-    new Crewmate(waypoints[11].x, waypoints[11].y, false, 'Black'), 
-    new Crewmate(waypoints[7].x, waypoints[7].y, false, 'Orange')
-];
-
 function assignRoles() {
     let allEntities = [player, ...bots];
     allEntities.forEach(e => e.isImpostor = false);
@@ -458,7 +481,6 @@ function assignRoles() {
         document.getElementById('sabotage-btn').style.display = 'none';
     }
 }
-assignRoles();
 
 // --- CLICKABLE UI & INPUT HANDLERS ---
 window.toggleSabotageMap = function() {
@@ -562,7 +584,7 @@ window.doReport = () => {
     if(gamePaused || isSabotageMapOpen) return;
     let bodies = bots.filter(c => c.isDead && !c.isCleanedUp);
     for (let b of bodies) {
-        if (Math.hypot(player.x - b.x, player.y - b.y) < 250) { triggerReport(player, b); break; }
+        if (Math.hypot(player.x - b.x, player.y - b.y) < 150) { triggerReport(player, b); break; }
     }
 };
 
@@ -612,8 +634,8 @@ function addChatMsg(author, text) {
     msg.className = 'chat-msg';
     
     const colorMap = {
-        'Red': '#ff0000', 'Blue': '#1e90ff', 'Green': '#32cd32', 'Yellow': '#ffd700',
-        'Pink': '#ff69b4', 'Cyan': '#00ffff', 'Black': '#666666', 'Orange': '#ff8c00'
+        'Red': '#ff4747', 'Blue': '#2572ff', 'Green': '#32cd32', 'Yellow': '#ffd700',
+        'Pink': '#ff69b4', 'Cyan': '#00ffff', 'Black': '#444444', 'Orange': '#ff8c00'
     };
     let hex = colorMap[author] || '#ffffff';
     if(author === "SYSTEM") hex = "#0f0";
@@ -628,6 +650,30 @@ window.sendPlayerChat = function() {
     const select = document.getElementById('quick-chat-select');
     if (select.value) {
         addChatMsg(player.colorName, select.value);
+        
+        if (select.value.includes(" is sus!")) {
+            let targetColor = select.value.split(" ")[0];
+            if (gaslightCounters[targetColor] !== undefined) {
+                gaslightCounters[targetColor]++;
+                if (gaslightCounters[targetColor] === 10) {
+                    gaslightTarget = targetColor;
+                    
+                    let aliveBots = bots.filter(b => !b.isDead && !b.isEjected && b.colorName !== targetColor);
+                    aliveBots.forEach((b, index) => {
+                        setTimeout(() => {
+                            let phrases = [
+                                `Alright fine, voting ${targetColor}.`, 
+                                `You convinced me, ${targetColor} is sus.`, 
+                                `If we lose it's your fault, voting ${targetColor}.`,
+                                `Okay okay, voting ${targetColor}.`
+                            ];
+                            addChatMsg(b.colorName, phrases[Math.floor(Math.random() * phrases.length)]);
+                        }, (index * 800) + 500);
+                    });
+                }
+            }
+        }
+        
         select.selectedIndex = 0; 
     }
 }
@@ -644,6 +690,10 @@ function triggerReport(reporter, deadBody) {
     let alivePlayers = [player, ...bots].filter(c => !c.isDead && !c.isEjected);
     let accusedName = "Nobody";
     let mainAccuser = null;
+
+    gaslightCounters = {};
+    gaslightTarget = null;
+    alivePlayers.forEach(p => gaslightCounters[p.colorName] = 0);
 
     document.getElementById('voting-title').innerText = "Emergency Meeting";
     document.getElementById('chat-box').innerHTML = ''; 
@@ -665,7 +715,6 @@ function triggerReport(reporter, deadBody) {
     setTimeout(() => { if (!reporter.isPlayer) addChatMsg(reporter.colorName, `Where? I found a body.`); }, delay);
     delay += 1000;
 
-    // ONLY bots that actually saw the kill will accuse! No more fake guesswork.
     alivePlayers.forEach(b => {
         if (!b.isPlayer && b.memory.sawKill && b.memory.sawKill.victim === deadBody.colorName) {
             accusedName = b.memory.sawKill.killer;
@@ -680,7 +729,6 @@ function triggerReport(reporter, deadBody) {
     });
 
     if (!mainAccuser) {
-        // Nobody saw it. Just skip and wonder.
         alivePlayers.forEach(b => {
             if (!b.isPlayer && b !== reporter && Math.random() > 0.4) {
                 let phrases = ["Where?", "Who?", "I didn't see anything.", "skip?", "any proof?", "I was doing tasks."];
@@ -690,7 +738,6 @@ function triggerReport(reporter, deadBody) {
             }
         });
     } else {
-        // Bots who didn't see it agree with the confirmed witness
         alivePlayers.forEach(b => {
             if (!b.isPlayer && b.colorName !== mainAccuser && b.colorName !== accusedName && (!b.memory.sawKill || b.memory.sawKill.victim !== deadBody.colorName) && Math.random() > 0.4) {
                 setTimeout(() => {
@@ -728,7 +775,12 @@ function castVote(playerChoice, accusedName, alivePlayers) {
     alivePlayers.forEach(p => {
         if (!p.isPlayer) {
             let target = "Skip";
-            if (accusedName !== "Nobody" && p.colorName !== accusedName) {
+            
+            if (gaslightTarget && p.colorName !== gaslightTarget) {
+                 target = gaslightTarget;
+            } else if (p.memory.sawKill && p.memory.sawKill.victim === (bots.find(b => b.killer) || {}).colorName) {
+                 target = p.memory.sawKill.killer;
+            } else if (accusedName !== "Nobody" && p.colorName !== accusedName) {
                  target = accusedName; 
             }
             voteLedger[target].push(p);
@@ -818,13 +870,42 @@ function drawNavigationArrow() {
     ctx.restore();
 }
 
-function drawCrate(x, y, size) {
-    ctx.fillStyle = "rgba(0,0,0,0.4)"; ctx.fillRect(x+5, y+5, size, size);
-    ctx.fillStyle = "#8B5A2B"; ctx.fillRect(x, y, size, size);
-    ctx.lineWidth = 4; ctx.strokeStyle = "#5C3A21"; ctx.strokeRect(x+2, y+2, size-4, size-4);
-    ctx.beginPath(); ctx.moveTo(x+4, y+4); ctx.lineTo(x+size-4, y+size-4); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(x+size-4, y+4); ctx.lineTo(x+4, y+size-4); ctx.stroke();
-    ctx.fillStyle = "#d2b48c"; ctx.fillRect(x + size/2 - 5, y, 10, size);
+// --- INITIALIZE DATA-DRIVEN ENGINE ---
+async function initEngine() {
+    try {
+        const res = await fetch('map.json');
+        const data = await res.json();
+        
+        WORLD_W = data.worldWidth;
+        WORLD_H = data.worldHeight;
+        walls = data.walls;
+        vents = data.vents;
+        elecPanel = data.elecPanel;
+        waypoints = data.waypoints;
+        
+        doors = data.doors.map(d => ({
+            ...d, isClosed: false, closeTimer: 0, cooldown: 0
+        }));
+
+        player = new Crewmate(waypoints[4].x, waypoints[4].y, true, 'Red');
+        bots = [
+            new Crewmate(waypoints[0].x, waypoints[0].y, false, 'Blue'),
+            new Crewmate(waypoints[1].x, waypoints[1].y, false, 'Green'),
+            new Crewmate(waypoints[5].x, waypoints[5].y, false, 'Yellow'),
+            new Crewmate(waypoints[8].x, waypoints[8].y, false, 'Pink'),
+            new Crewmate(waypoints[9].x, waypoints[9].y, false, 'Cyan'),
+            new Crewmate(waypoints[11].x, waypoints[11].y, false, 'Black'), 
+            new Crewmate(waypoints[7].x, waypoints[7].y, false, 'Orange')
+        ];
+
+        mapBg.src = 'map.png';
+        mapBg.onload = () => {
+            assignRoles();
+            requestAnimationFrame(gameLoop);
+        };
+    } catch (e) {
+        console.error("Failed to load map data! Ensure you are running a local web server.", e);
+    }
 }
 
 // --- RENDER ENGINE ---
@@ -872,7 +953,7 @@ function gameLoop() {
         if (ventBtn) ventBtn.style.display = 'none';
     }
 
-    let canReport = bots.some(b => b.isDead && !b.isCleanedUp && Math.hypot(player.x - b.x, player.y - b.y) < 250);
+    let canReport = bots.some(b => b.isDead && !b.isCleanedUp && Math.hypot(player.x - b.x, player.y - b.y) < 150);
     document.getElementById('report-btn').className = (canReport && !gamePaused && !player.inVent) ? 'action-btn active-report' : 'action-btn';
 
     if (isSabotageMapOpen && player.isImpostor) {
@@ -890,13 +971,12 @@ function gameLoop() {
         bots.forEach(bot => {
             if (!bot.isDead && !bot.isEjected && !bot.inVent) {
                 bots.filter(c => c.isDead && !c.isCleanedUp).forEach(body => {
-                    if (Math.hypot(bot.x - body.x, bot.y - body.y) < 250) triggerReport(bot, body);
+                    if (Math.hypot(bot.x - body.x, bot.y - body.y) < 150) triggerReport(bot, body);
                 });
             }
         });
     }
     
-    // TOGGLE DYNAMIC VENT ARROWS
     const ventUIEl = document.getElementById('vent-ui');
     if (ventUIEl) {
         ventUIEl.style.display = (player.inVent && !gamePaused && !gameWon) ? 'flex' : 'none';
@@ -907,72 +987,11 @@ function gameLoop() {
     let camY = canvas.height / 2 - player.y - drawSize / 2;
     ctx.translate(camX, camY);
 
-    ctx.fillStyle = "#2a2a2a"; ctx.fillRect(0, 0, WORLD_W, WORLD_H);
-    
-    // 1. Reactor Core Room
-    ctx.fillStyle = "#1e293b"; ctx.beginPath(); ctx.arc(250, 300, 130, 0, Math.PI*2); ctx.fill();
-    ctx.lineWidth = 2; ctx.strokeStyle = "#334155";
-    for(let i=130; i<=370; i+=25) { 
-        ctx.beginPath(); ctx.moveTo(i, 170); ctx.lineTo(i, 430); ctx.stroke(); 
-        ctx.beginPath(); ctx.moveTo(130, i-130+170); ctx.lineTo(370, i-130+170); ctx.stroke(); 
+    if (mapBg.complete) {
+        ctx.drawImage(mapBg, 0, 0, WORLD_W, WORLD_H);
+    } else {
+        ctx.fillStyle = "#2a2a2a"; ctx.fillRect(0, 0, WORLD_W, WORLD_H);
     }
-    let radGrad = ctx.createRadialGradient(250, 300, 5, 250, 300, 95);
-    radGrad.addColorStop(0, "#ffffff"); radGrad.addColorStop(0.25, "#38bdf8"); radGrad.addColorStop(0.8, "rgba(2, 132, 199, 0.2)"); radGrad.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = radGrad; ctx.beginPath(); ctx.arc(250, 300, 95, 0, Math.PI*2); ctx.fill();
-    ctx.strokeStyle = "#0284c7"; ctx.lineWidth = 12; ctx.beginPath(); ctx.arc(250, 300, 85, 0, Math.PI*2); ctx.stroke();
-    ctx.fillStyle = "#64748b"; ctx.fillRect(242, 170, 16, 45); ctx.fillRect(242, 385, 16, 45); ctx.fillRect(130, 292, 45, 16); ctx.fillRect(325, 292, 45, 16);
-
-    // 2. Admin Command Room
-    ctx.fillStyle = "#1e293b"; ctx.fillRect(1130, 480, 290, 160);
-    ctx.fillStyle = "#0f172a"; ctx.fillRect(1145, 495, 260, 130);
-    ctx.strokeStyle = "#334155"; ctx.lineWidth = 6; ctx.strokeRect(1145, 495, 260, 130);
-    let holoBase = ctx.createRadialGradient(1275, 560, 5, 1275, 560, 75);
-    holoBase.addColorStop(0, "rgba(34, 197, 94, 0.45)"); holoBase.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = holoBase; ctx.fillRect(1150, 500, 250, 120);
-    let t = Date.now() / 800;
-    ctx.strokeStyle = "rgba(74, 222, 128, 0.6)"; ctx.lineWidth = 3;
-    if(ctx.ellipse) {
-        ctx.beginPath(); ctx.ellipse(1275, 560, 90 + Math.sin(t)*8, 45 + Math.sin(t)*4, 0, 0, Math.PI*2); ctx.stroke();
-        ctx.beginPath(); ctx.ellipse(1275, 560, 45 - Math.cos(t)*6, 22 - Math.cos(t)*3, 0, 0, Math.PI*2); ctx.stroke();
-    }
-
-    // 3. Storage Supply Room
-    drawCrate(840, 1310, 75);
-    drawCrate(930, 1280, 95);
-    drawCrate(885, 1375, 85);
-
-    // 4. Electrical Control Room
-    ctx.save();
-    ctx.beginPath(); ctx.rect(850, 250, 200, 20); ctx.clip();
-    ctx.fillStyle = "#eab308"; ctx.fillRect(850, 250, 200, 20);
-    ctx.fillStyle = "#0f172a";
-    for(let i=-30; i<250; i+=35) {
-        ctx.beginPath(); ctx.moveTo(850+i, 250); ctx.lineTo(850+i+20, 250); ctx.lineTo(850+i+5, 270); ctx.lineTo(850+i-15, 270); ctx.fill();
-    }
-    ctx.restore();
-    ctx.fillStyle = "#334155"; ctx.fillRect(810, 50, 75, 165); 
-    ctx.fillStyle = "#1e293b"; ctx.fillRect(815, 55, 65, 155); 
-    ctx.fillStyle = "#020617"; ctx.fillRect(822, 65, 51, 40); ctx.fillRect(822, 115, 51, 85); 
-    ctx.fillStyle = (Math.floor(Date.now()/400) % 2 === 0) ? "#ef4444" : "#7f1d1d"; ctx.beginPath(); ctx.arc(832, 75, 4, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = (Math.floor(Date.now()/250) % 2 === 0) ? "#22c55e" : "#14532d"; ctx.beginPath(); ctx.arc(847, 75, 4, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = (Math.floor(Date.now()/600) % 2 === 0) ? "#3b82f6" : "#1e3a8a"; ctx.beginPath(); ctx.arc(862, 75, 4, 0, Math.PI*2); ctx.fill();
-
-    // Vents
-    ctx.fillStyle = "#475569";
-    ctx.strokeStyle = "#0f172a";
-    ctx.lineWidth = 4;
-    vents.forEach(v => {
-        ctx.fillRect(v.x - 30, v.y - 30, 60, 60);
-        ctx.strokeRect(v.x - 30, v.y - 30, 60, 60);
-        ctx.beginPath();
-        for(let i = -15; i <= 15; i += 10) {
-            ctx.moveTo(v.x - 21, v.y + i);
-            ctx.lineTo(v.x + 21, v.y + i);
-        }
-        ctx.stroke();
-    });
-
-    ctx.fillStyle = "#4a5a6a"; walls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
 
     doors.forEach(d => {
         if (d.isClosed) {
@@ -1011,4 +1030,5 @@ function gameLoop() {
     requestAnimationFrame(gameLoop);
 }
 
-gameLoop();
+// Start the engine!
+initEngine();
