@@ -97,52 +97,43 @@ function checkCollision(nx, ny, size) {
     return false;
 }
 
-// --- DYNAMIC SPRITE RECOLORER (NO LIBRARIES REQUIRED) ---
-function darkenHex(hex, percent) {
-    let r = parseInt(hex.slice(1, 3), 16);
-    let g = parseInt(hex.slice(3, 5), 16);
-    let b = parseInt(hex.slice(5, 7), 16);
-    r = Math.floor(r * (1 - percent));
-    g = Math.floor(g * (1 - percent));
-    b = Math.floor(b * (1 - percent));
-    return "#" + (1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1);
-}
-
-function getRecoloredSprite(img, suitColor) {
+// --- DYNAMIC PIXEL RECOLORER FOR WHITE SPRITES ---
+function getTintedSprite(img, suitHex) {
     let tCanvas = document.createElement('canvas');
     tCanvas.width = drawSize; 
     tCanvas.height = drawSize;
     let tCtx = tCanvas.getContext('2d');
-    
-    const suitRgb = parseInt(suitColor.slice(1), 16);
-    const suitR = (suitRgb >> 16) & 255;
-    const suitG = (suitRgb >> 8) & 255;
-    const suitB = suitRgb & 255;
-
-    const backHex = darkenHex(suitColor, 0.35); // 35% darker for the backpack shadow
-    const backRgb = parseInt(backHex.slice(1), 16);
-    const backR = (backRgb >> 16) & 255;
-    const backG = (backRgb >> 8) & 255;
-    const backB = backRgb & 255;
-
     tCtx.drawImage(img, 0, 0, drawSize, drawSize);
-    const imageData = tCtx.getImageData(0, 0, drawSize, drawSize);
-    const pixels = imageData.data;
 
-    for (let i = 0; i < pixels.length; i += 4) {
-        if (pixels[i] === 255 && pixels[i+1] === 0 && pixels[i+2] === 0) {
-            pixels[i]   = suitR;
-            pixels[i+1] = suitG;
-            pixels[i+2] = suitB;
-        }
-        if (pixels[i] === 0 && pixels[i+1] === 0 && pixels[i+2] === 255) {
-            pixels[i]   = backR;
-            pixels[i+1] = backG;
-            pixels[i+2] = backB;
+    // Convert hex to RGB
+    const suitRgb = parseInt(suitHex.slice(1), 16);
+    const rTarget = (suitRgb >> 16) & 255;
+    const gTarget = (suitRgb >> 8) & 255;
+    const bTarget = suitRgb & 255;
+
+    let imgData = tCtx.getImageData(0, 0, drawSize, drawSize);
+    let data = imgData.data;
+
+    for (let i = 0; i < data.length; i += 4) {
+        let r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
+        if (a === 0) continue; // Skip transparent background
+
+        // Identify grayscale pixels (body & backpack) while ignoring blue visors
+        let isGrayscale = Math.abs(r - g) < 20 && Math.abs(g - b) < 20 && Math.abs(r - b) < 20;
+        // Ignore pure black outlines
+        let isNotBlack = r > 40 || g > 40 || b > 40; 
+
+        if (isGrayscale && isNotBlack) {
+            // Calculate brightness. White (255) = 1.0, Gray (128) = 0.5. 
+            // This perfectly shades the backpack while coloring the body!
+            let brightness = r / 255; 
+            data[i] = rTarget * brightness;
+            data[i+1] = gTarget * brightness;
+            data[i+2] = bTarget * brightness;
         }
     }
 
-    tCtx.putImageData(imageData, 0, 0);
+    tCtx.putImageData(imgData, 0, 0);
     return tCanvas;
 }
 
@@ -200,7 +191,7 @@ class Crewmate {
         
         const colorMap = {
             'Red': '#ff0000', 'Blue': '#1e90ff', 'Green': '#32cd32', 'Yellow': '#ffd700',
-            'Pink': '#ff69b4', 'Cyan': '#00ffff', 'Black': '#555555', 'Orange': '#ff8c00'
+            'Pink': '#ff69b4', 'Cyan': '#00ffff', 'Black': '#666666', 'Orange': '#ff8c00'
         };
         this.colorHex = colorMap[this.colorName] || '#ffffff';
         this.tintedStand = null;
@@ -391,10 +382,15 @@ class Crewmate {
     draw(ctx) {
         if (this.isEjected) return; 
 
+        // Generate colored sprites safely once images are fully confirmed loaded!
         if (standImg.complete && standImg.naturalWidth > 0 && !this.tintedStand) {
-            this.tintedStand = getRecoloredSprite(standImg, this.colorHex);
-            this.tintedWalk = getRecoloredSprite(walkImg, this.colorHex);
-            this.tintedDead = getRecoloredSprite(deadImg, this.colorHex);
+            this.tintedStand = getTintedSprite(standImg, this.colorHex);
+        }
+        if (walkImg.complete && walkImg.naturalWidth > 0 && !this.tintedWalk) {
+            this.tintedWalk = getTintedSprite(walkImg, this.colorHex);
+        }
+        if (deadImg.complete && deadImg.naturalWidth > 0 && !this.tintedDead) {
+            this.tintedDead = getTintedSprite(deadImg, this.colorHex);
         }
 
         ctx.save();
@@ -617,8 +613,8 @@ function addChatMsg(author, text) {
     msg.className = 'chat-msg';
     
     const colorMap = {
-        'Red': '#ff0000', 'Blue': '#1e90ff', 'Green': '#32cd32', 'Yellow': '#ffd700',
-        'Pink': '#ff69b4', 'Cyan': '#00ffff', 'Black': '#555555', 'Orange': '#ff8c00'
+        'Red': '#ff4747', 'Blue': '#2572ff', 'Green': '#32cd32', 'Yellow': '#ffd700',
+        'Pink': '#ff69b4', 'Cyan': '#00ffff', 'Black': '#444444', 'Orange': '#ff8c00'
     };
     let hex = colorMap[author] || '#ffffff';
     if(author === "SYSTEM") hex = "#0f0";
@@ -955,71 +951,65 @@ function gameLoop() {
 
     ctx.fillStyle = "#2a2a2a"; ctx.fillRect(0, 0, WORLD_W, WORLD_H);
     
-    // --- POLISHED ENVIRONMENTAL DECORATIONS ---
-    
-    // 1. Reactor Core
-    ctx.fillStyle = "#1a2530"; ctx.beginPath(); ctx.arc(250, 300, 120, 0, Math.PI*2); ctx.fill();
-    ctx.lineWidth = 2; ctx.strokeStyle = "#111";
-    for(let i=130; i<=370; i+=20) { 
-        ctx.beginPath(); ctx.moveTo(i, 180); ctx.lineTo(i, 420); ctx.stroke(); 
-        ctx.beginPath(); ctx.moveTo(130, i-120+180); ctx.lineTo(370, i-120+180); ctx.stroke(); 
+    // 1. Reactor Core Room (Left)
+    ctx.fillStyle = "#1e293b"; ctx.beginPath(); ctx.arc(250, 300, 130, 0, Math.PI*2); ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = "#334155";
+    for(let i=130; i<=370; i+=25) { 
+        ctx.beginPath(); ctx.moveTo(i, 170); ctx.lineTo(i, 430); ctx.stroke(); 
+        ctx.beginPath(); ctx.moveTo(130, i-130+170); ctx.lineTo(370, i-130+170); ctx.stroke(); 
     }
-    let radGrad = ctx.createRadialGradient(250, 300, 10, 250, 300, 90);
-    radGrad.addColorStop(0, "#ffffff"); radGrad.addColorStop(0.2, "#00ffff"); radGrad.addColorStop(1, "rgba(0, 100, 255, 0.1)");
-    ctx.fillStyle = radGrad; ctx.beginPath(); ctx.arc(250, 300, 90, 0, Math.PI*2); ctx.fill();
-    ctx.strokeStyle = "#088"; ctx.lineWidth = 15; ctx.beginPath(); ctx.arc(250, 300, 90, 0, Math.PI*2); ctx.stroke();
-    ctx.fillStyle = "#334"; ctx.fillRect(240, 200, 20, 30); ctx.fillRect(240, 370, 20, 30); ctx.fillRect(150, 290, 30, 20); ctx.fillRect(320, 290, 30, 20);
+    let radGrad = ctx.createRadialGradient(250, 300, 5, 250, 300, 95);
+    radGrad.addColorStop(0, "#ffffff"); radGrad.addColorStop(0.25, "#38bdf8"); radGrad.addColorStop(0.8, "rgba(2, 132, 199, 0.2)"); radGrad.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = radGrad; ctx.beginPath(); ctx.arc(250, 300, 95, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = "#0284c7"; ctx.lineWidth = 12; ctx.beginPath(); ctx.arc(250, 300, 85, 0, Math.PI*2); ctx.stroke();
+    ctx.fillStyle = "#64748b"; ctx.fillRect(242, 170, 16, 45); ctx.fillRect(242, 385, 16, 45); ctx.fillRect(130, 292, 45, 16); ctx.fillRect(325, 292, 45, 16);
 
-    // 2. Admin Table & Hologram
-    if(ctx.roundRect) {
-        ctx.fillStyle = "#2a2e33"; ctx.beginPath(); ctx.roundRect(1140, 490, 270, 140, 20); ctx.fill();
-        ctx.fillStyle = "#1d2024"; ctx.beginPath(); ctx.roundRect(1150, 500, 250, 120, 15); ctx.fill();
-    } else {
-        ctx.fillStyle = "#2a2e33"; ctx.fillRect(1140, 490, 270, 140);
-        ctx.fillStyle = "#1d2024"; ctx.fillRect(1150, 500, 250, 120);
-    }
-    let holoBase = ctx.createRadialGradient(1275, 560, 10, 1275, 560, 60);
-    holoBase.addColorStop(0, "rgba(0, 255, 100, 0.5)"); holoBase.addColorStop(1, "rgba(0, 255, 100, 0)");
-    ctx.fillStyle = holoBase; ctx.fillRect(1170, 500, 210, 120);
-    let t = Date.now() / 1000;
-    ctx.strokeStyle = "rgba(0, 255, 100, 0.5)"; ctx.lineWidth = 2;
+    // 2. Admin Command Room (Right)
+    ctx.fillStyle = "#1e293b"; ctx.fillRect(1130, 480, 290, 160);
+    ctx.fillStyle = "#0f172a"; ctx.fillRect(1145, 495, 260, 130);
+    ctx.strokeStyle = "#334155"; ctx.lineWidth = 6; ctx.strokeRect(1145, 495, 260, 130);
+    let holoBase = ctx.createRadialGradient(1275, 560, 5, 1275, 560, 75);
+    holoBase.addColorStop(0, "rgba(34, 197, 94, 0.45)"); holoBase.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = holoBase; ctx.fillRect(1150, 500, 250, 120);
+    let t = Date.now() / 800;
+    ctx.strokeStyle = "rgba(74, 222, 128, 0.6)"; ctx.lineWidth = 3;
     if(ctx.ellipse) {
-        ctx.beginPath(); ctx.ellipse(1275, 560, 80 + Math.sin(t)*10, 40 + Math.sin(t)*5, 0, 0, Math.PI*2); ctx.stroke();
-        ctx.beginPath(); ctx.ellipse(1275, 560, 40 - Math.sin(t)*5, 20 - Math.sin(t)*2.5, 0, 0, Math.PI*2); ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(1275, 560, 90 + Math.sin(t)*8, 45 + Math.sin(t)*4, 0, 0, Math.PI*2); ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(1275, 560, 45 - Math.cos(t)*6, 22 - Math.cos(t)*3, 0, 0, Math.PI*2); ctx.stroke();
     }
 
-    // 3. Storage Crates
-    drawCrate(830, 1310, 80);
-    drawCrate(920, 1280, 100);
-    drawCrate(880, 1370, 90);
+    // 3. Storage Supply Room (Bottom)
+    drawCrate(840, 1310, 75);
+    drawCrate(930, 1280, 95);
+    drawCrate(885, 1375, 85);
 
-    // 4. Electrical Hazard Stripes & Server
+    // 4. Electrical Control Room (Top)
     ctx.save();
     ctx.beginPath(); ctx.rect(850, 250, 200, 20); ctx.clip();
-    ctx.fillStyle = "#ffd700"; ctx.fillRect(850, 250, 200, 20);
-    ctx.fillStyle = "#111";
-    for(let i=-20; i<250; i+=30) {
-        ctx.beginPath(); ctx.moveTo(850+i, 250); ctx.lineTo(850+i+20, 250); ctx.lineTo(850+i+10, 270); ctx.lineTo(850+i-10, 270); ctx.fill();
+    ctx.fillStyle = "#eab308"; ctx.fillRect(850, 250, 200, 20);
+    ctx.fillStyle = "#0f172a";
+    for(let i=-30; i<250; i+=35) {
+        ctx.beginPath(); ctx.moveTo(850+i, 250); ctx.lineTo(850+i+20, 250); ctx.lineTo(850+i+5, 270); ctx.lineTo(850+i-15, 270); ctx.fill();
     }
     ctx.restore();
-    ctx.fillStyle = "#2a2d33"; ctx.fillRect(810, 50, 70, 160); 
-    ctx.fillStyle = "#3b4048"; ctx.fillRect(815, 55, 60, 150); 
-    ctx.fillStyle = "#111"; ctx.fillRect(825, 65, 40, 40); ctx.fillRect(825, 115, 40, 80); 
-    ctx.fillStyle = (Math.floor(Date.now()/500) % 2 === 0) ? "#f00" : "#500"; ctx.beginPath(); ctx.arc(830, 60, 3, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = (Math.floor(Date.now()/300) % 2 === 0) ? "#0f0" : "#050"; ctx.beginPath(); ctx.arc(840, 60, 3, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = (Math.floor(Date.now()/800) % 2 === 0) ? "#00f" : "#005"; ctx.beginPath(); ctx.arc(850, 60, 3, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "#334155"; ctx.fillRect(810, 50, 75, 165); 
+    ctx.fillStyle = "#1e293b"; ctx.fillRect(815, 55, 65, 155); 
+    ctx.fillStyle = "#020617"; ctx.fillRect(822, 65, 51, 40); ctx.fillRect(822, 115, 51, 85); 
+    ctx.fillStyle = (Math.floor(Date.now()/400) % 2 === 0) ? "#ef4444" : "#7f1d1d"; ctx.beginPath(); ctx.arc(832, 75, 4, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = (Math.floor(Date.now()/250) % 2 === 0) ? "#22c55e" : "#14532d"; ctx.beginPath(); ctx.arc(847, 75, 4, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = (Math.floor(Date.now()/600) % 2 === 0) ? "#3b82f6" : "#1e3a8a"; ctx.beginPath(); ctx.arc(862, 75, 4, 0, Math.PI*2); ctx.fill();
 
     // Vents
-    ctx.fillStyle = "#4a4a4a";
-    ctx.strokeStyle = "#111";
+    ctx.fillStyle = "#475569";
+    ctx.strokeStyle = "#0f172a";
     ctx.lineWidth = 4;
     vents.forEach(v => {
         ctx.fillRect(v.x - 30, v.y - 30, 60, 60);
         ctx.strokeRect(v.x - 30, v.y - 30, 60, 60);
         ctx.beginPath();
         for(let i = -15; i <= 15; i += 10) {
-            ctx.moveTo(v.x - 20, v.y + i);
-            ctx.lineTo(v.x + 20, v.y + i);
+            ctx.moveTo(v.x - 21, v.y + i);
+            ctx.lineTo(v.x + 21, v.y + i);
         }
         ctx.stroke();
     });
@@ -1037,13 +1027,13 @@ function gameLoop() {
         }
     });
 
-    ctx.fillStyle = lightsOut ? "#ff4747" : "#555"; 
+    ctx.fillStyle = lightsOut ? "#ef4444" : "#475569"; 
     ctx.fillRect(elecPanel.x, elecPanel.y, elecPanel.w, elecPanel.h);
     ctx.fillStyle = "white"; ctx.font = "bold 20px 'Varela Round'"; ctx.textAlign = "center";
     ctx.fillText("⚡", elecPanel.x + elecPanel.w/2, elecPanel.y + elecPanel.h/2 + 7);
     if (lightsOut) {
-        ctx.fillStyle = "rgba(255, 71, 71, 0.5)";
-        ctx.beginPath(); ctx.arc(elecPanel.x + elecPanel.w/2, elecPanel.y - 20, 15 + Math.sin(Date.now()/200)*5, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = "rgba(239, 68, 68, 0.45)";
+        ctx.beginPath(); ctx.arc(elecPanel.x + elecPanel.w/2, elecPanel.y - 20, 15 + Math.sin(Date.now()/150)*6, 0, Math.PI*2); ctx.fill();
     }
 
     let allEntities = [...bots, player];
@@ -1059,7 +1049,7 @@ function gameLoop() {
     }
     
     if (player.inVent && !gamePaused && !gameWon) {
-        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+        ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
         ctx.fillRect(0, 0, canvas.width, 80);
         ctx.fillStyle = "#fff";
         ctx.font = "bold 24px 'Varela Round'";
