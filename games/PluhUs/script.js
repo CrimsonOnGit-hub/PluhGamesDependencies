@@ -130,7 +130,6 @@ class Crewmate {
             if (keys['KeyD']) { nx += this.speed; this.isMoving = true; }
             if (!checkCollision(nx, ny, drawSize)) { this.x = nx; this.y = ny; }
         } else {
-            // Sabotage Check
             if (lightsOut && !this.goingToFixLights) {
                 this.goingToFixLights = true;
                 let start = getClosestNode(this.x, this.y);
@@ -142,7 +141,6 @@ class Crewmate {
                 this.goingToFixLights = false;
             }
 
-            // Fix Lights Task
             if (this.goingToFixLights && Math.hypot(this.x - waypoints[5].x, this.y - waypoints[5].y) < 100) {
                 this.isMoving = false;
                 if (Math.random() < 0.01) { 
@@ -151,7 +149,6 @@ class Crewmate {
                 return;
             }
 
-            // Follow the Route with Wander Variance
             if (this.waitTimer > 0) {
                 this.waitTimer--;
                 this.isMoving = false;
@@ -193,7 +190,6 @@ class Crewmate {
                     if (!checkCollision(nx, ny, drawSize)) {
                         this.x = nx; this.y = ny; this.isMoving = true;
                     } else {
-                        // Wall Sliding
                         if (!checkCollision(nx, this.y, drawSize)) {
                             this.x = nx; this.isMoving = true;
                         } else if (!checkCollision(this.x, ny, drawSize)) {
@@ -205,7 +201,6 @@ class Crewmate {
                     }
                 }
             } else {
-                // Pick New Destination
                 let start = getClosestNode(this.x, this.y);
                 let target;
                 do {
@@ -321,6 +316,16 @@ function addChatMsg(author, text) {
     box.scrollTop = box.scrollHeight; 
 }
 
+// NEW: Send Player Chat
+window.sendPlayerChat = function() {
+    if (player.isDead || player.isEjected) return; 
+    const select = document.getElementById('quick-chat-select');
+    if (select.value) {
+        addChatMsg(player.colorName, select.value);
+        select.selectedIndex = 0; // Reset dropdown to default
+    }
+}
+
 function triggerReport(reporter, deadBody) {
     if (gamePaused || gameWon) return; 
     gamePaused = true; lightsOut = false; visionRadius = 500; 
@@ -338,8 +343,22 @@ function triggerReport(reporter, deadBody) {
     document.getElementById('voting-buttons').innerHTML = ''; 
     document.getElementById('voting-layer').style.display = 'flex'; 
 
+    // Dynamically populate Quick Chat accusation options
+    const accuseGroup = document.getElementById('qc-accuse');
+    accuseGroup.innerHTML = '';
+    alivePlayers.forEach(p => {
+        if (!p.isPlayer) {
+            let opt = document.createElement('option');
+            opt.value = `${p.colorName} is sus!`;
+            opt.innerText = `${p.colorName} is sus!`;
+            accuseGroup.appendChild(opt);
+        }
+    });
+
     let delay = 1000;
-    setTimeout(() => { addChatMsg(reporter.colorName, `Where? I found a body.`); }, delay);
+    setTimeout(() => { 
+        if (!reporter.isPlayer) addChatMsg(reporter.colorName, `Where? I found a body.`); 
+    }, delay);
     delay += 1000;
 
     alivePlayers.forEach(b => {
