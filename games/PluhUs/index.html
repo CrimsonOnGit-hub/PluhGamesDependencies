@@ -41,6 +41,23 @@
             <div id="tablet-screen">
                 <h2 id="voting-title">Emergency Meeting</h2>
                 <div id="chat-box"></div>
+                
+                <div id="quick-chat-ui">
+                    <select id="quick-chat-select" class="chat-select">
+                        <option value="" disabled selected>-- Quick Chat --</option>
+                        <optgroup label="General">
+                            <option value="Where?">Where?</option>
+                            <option value="Who?">Who?</option>
+                            <option value="I was doing tasks.">I was doing tasks.</option>
+                            <option value="Any proof?">Any proof?</option>
+                            <option value="Skip vote.">Skip vote.</option>
+                        </optgroup>
+                        <optgroup id="qc-accuse" label="Accuse">
+                            </optgroup>
+                    </select>
+                    <button class="vote-btn" style="padding: 10px 20px;" onclick="sendPlayerChat()">Send</button>
+                </div>
+
                 <div id="voting-buttons"></div>
             </div>
         </div>
