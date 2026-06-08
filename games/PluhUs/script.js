@@ -72,6 +72,7 @@ devMenu.innerHTML = `
     <label style="display: flex; justify-content: space-between; font-size: 12px; margin-top: 5px;">
         Bots: <input type="range" id="b-speed" min="1" max="10" value="3.5" step="0.5" onchange="window.updateSpeeds()" style="width: 80px; margin: 0 10px;"> <span id="b-spd-val">3.5</span>
     </label>
+    <button onclick="window.exportMapImage()" style="background: #22c55e; color: #111; border: 1px solid #22c55e; cursor: pointer; padding: 5px 15px; border-radius: 3px; width: 100%; margin-top: 15px; font-weight:bold;">📸 Export Map PNG</button>
     <div style="margin-top: 15px; text-align: right;">
         <button onclick="document.getElementById('dev-menu').style.display='none'" style="background: #111; color: #0f0; border: 1px solid #0f0; cursor: pointer; padding: 5px 15px; border-radius: 3px;">Close</button>
     </div>
@@ -102,7 +103,6 @@ let lightsOut = false;
 let visionRadius = 500; 
 let isSabotageMapOpen = false;
 
-// Gaslight Mechanic Variables
 let gaslightCounters = {};
 let gaslightTarget = null;
 
@@ -136,7 +136,6 @@ const vents = [
     { x: 200, y: 1200 }   
 ];
 
-// Re-centered waypoints perfectly positioned for hallways
 const waypoints = [
     { id: 0, x: 170, y: 270, edges: [2] },         
     { id: 1, x: 170, y: 1170, edges: [2] },        
@@ -166,7 +165,7 @@ function checkCollision(nx, ny, size) {
     return false;
 }
 
-// --- DYNAMIC PIXEL RECOLORER FOR WHITE SPRITES ---
+// --- DYNAMIC PIXEL RECOLORER ---
 function getTintedSprite(img, suitHex) {
     let tCanvas = document.createElement('canvas');
     tCanvas.width = drawSize; 
@@ -174,30 +173,44 @@ function getTintedSprite(img, suitHex) {
     let tCtx = tCanvas.getContext('2d');
     tCtx.drawImage(img, 0, 0, drawSize, drawSize);
 
-    const suitRgb = parseInt(suitHex.slice(1), 16);
-    const rTarget = (suitRgb >> 16) & 255;
-    const gTarget = (suitRgb >> 8) & 255;
-    const bTarget = suitRgb & 255;
+    try {
+        const suitRgb = parseInt(suitHex.slice(1), 16);
+        const rTarget = (suitRgb >> 16) & 255;
+        const gTarget = (suitRgb >> 8) & 255;
+        const bTarget = suitRgb & 255;
 
-    let imgData = tCtx.getImageData(0, 0, drawSize, drawSize);
-    let data = imgData.data;
+        let imgData = tCtx.getImageData(0, 0, drawSize, drawSize);
+        let data = imgData.data;
 
-    for (let i = 0; i < data.length; i += 4) {
-        let r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
-        if (a === 0) continue; 
+        for (let i = 0; i < data.length; i += 4) {
+            let r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
+            if (a === 0) continue; 
 
-        let isGrayscale = Math.abs(r - g) < 20 && Math.abs(g - b) < 20 && Math.abs(r - b) < 20;
-        let isNotBlack = r > 40 || g > 40 || b > 40; 
+            let isGrayscale = Math.abs(r - g) < 20 && Math.abs(g - b) < 20 && Math.abs(r - b) < 20;
+            let isNotBlack = r > 40 || g > 40 || b > 40; 
 
-        if (isGrayscale && isNotBlack) {
-            let brightness = r / 255; 
-            data[i] = rTarget * brightness;
-            data[i+1] = gTarget * brightness;
-            data[i+2] = bTarget * brightness;
+            if (isGrayscale && isNotBlack) {
+                let brightness = r / 255; 
+                data[i] = rTarget * brightness;
+                data[i+1] = gTarget * brightness;
+                data[i+2] = bTarget * brightness;
+            }
         }
+        tCtx.putImageData(imgData, 0, 0);
+    } catch (e) {
+        // Safe offline fallback
+        let fCanvas = document.createElement('canvas');
+        fCanvas.width = drawSize; fCanvas.height = drawSize;
+        let fCtx = fCanvas.getContext('2d');
+        fCtx.drawImage(img, 0, 0, drawSize, drawSize);
+        fCtx.globalCompositeOperation = 'source-in';
+        fCtx.fillStyle = suitHex;
+        fCtx.fillRect(0, 0, drawSize, drawSize);
+        fCtx.globalCompositeOperation = 'multiply';
+        fCtx.drawImage(img, 0, 0, drawSize, drawSize);
+        return fCanvas;
     }
-
-    tCtx.putImageData(imgData, 0, 0);
+    
     return tCanvas;
 }
 
@@ -210,15 +223,20 @@ function getClosestNode(x, y) {
     return closest;
 }
 
+// FIXED THE CRASH: Now looks up the Node properly by ID!
 function getPath(startId, endId) {
     if (startId === endId) return [];
     let queue = [[startId]];
     let visited = new Set([startId]);
     while(queue.length > 0) {
         let path = queue.shift();
-        let node = path[path.length - 1];
-        if (node === endId) return path;
-        for (let neighbor of waypoints[node].edges) {
+        let nodeId = path[path.length - 1];
+        if (nodeId === endId) return path;
+        
+        let nodeData = waypoints.find(w => w.id === nodeId);
+        if (!nodeData) continue; 
+
+        for (let neighbor of nodeData.edges) {
             if (!visited.has(neighbor)) {
                 visited.add(neighbor);
                 queue.push([...path, neighbor]);
@@ -292,15 +310,26 @@ class Crewmate {
             return;
         }
 
-        this.isMoving = false;
-
+        // --- PLAYER WALL SLIDING FIX ---
         if (this.isPlayer) {
             let nx = this.x; let ny = this.y;
-            if (keys['KeyW']) { ny -= this.speed; this.isMoving = true; }
-            if (keys['KeyS']) { ny += this.speed; this.isMoving = true; }
-            if (keys['KeyA']) { nx -= this.speed; this.isMoving = true; this.lastDir = 'left'; }
-            if (keys['KeyD']) { nx += this.speed; this.isMoving = true; this.lastDir = 'right'; }
-            if (!checkCollision(nx, ny, drawSize)) { this.x = nx; this.y = ny; }
+            let moved = false;
+            if (keys['KeyW']) { ny -= this.speed; moved = true; }
+            if (keys['KeyS']) { ny += this.speed; moved = true; }
+            if (keys['KeyA']) { nx -= this.speed; moved = true; this.lastDir = 'left'; }
+            if (keys['KeyD']) { nx += this.speed; moved = true; this.lastDir = 'right'; }
+            
+            if (moved) {
+                if (!checkCollision(nx, ny, drawSize)) {
+                    this.x = nx; this.y = ny; this.isMoving = true;
+                } else {
+                    if (!checkCollision(nx, this.y, drawSize)) { this.x = nx; this.isMoving = true; }
+                    else if (!checkCollision(this.x, ny, drawSize)) { this.y = ny; this.isMoving = true; }
+                    else { this.isMoving = false; }
+                }
+            } else {
+                this.isMoving = false;
+            }
         } else {
             
             if (this.isImpostor) {
@@ -354,10 +383,11 @@ class Crewmate {
                 let start = getClosestNode(this.x, this.y);
                 let pathIds = getPath(start, 5); pathIds.shift();
                 this.path = pathIds;
-                this.targetNode = this.path.length > 0 ? waypoints[this.path[0]] : waypoints[5];
+                let targetData = waypoints.find(w => w.id === this.path[0]);
+                this.targetNode = this.path.length > 0 ? targetData : waypoints.find(w => w.id === 5);
             } else if (!lightsOut) { this.goingToFixLights = false; }
 
-            if (this.goingToFixLights && Math.hypot(this.x - waypoints[5].x, this.y - waypoints[5].y) < 100) {
+            if (this.goingToFixLights && Math.hypot(this.x - waypoints.find(w=>w.id===5).x, this.y - waypoints.find(w=>w.id===5).y) < 100) {
                 this.isMoving = false;
                 if (Math.random() < 0.01) { lightsOut = false; visionRadius = 500; closeTask(); }
                 return;
@@ -378,7 +408,7 @@ class Crewmate {
 
                 if (dist < 10) {
                     this.path.shift(); 
-                    if (this.path.length > 0) this.targetNode = waypoints[this.path[0]]; 
+                    if (this.path.length > 0) this.targetNode = waypoints.find(w=>w.id===this.path[0]); 
                     else { 
                         this.targetNode = null; 
                         this.finalOffsetX = (Math.random() - 0.5) * 60; 
@@ -425,12 +455,12 @@ class Crewmate {
                 if (validTargets.length > 0) {
                     target = validTargets[Math.floor(Math.random() * validTargets.length)].id;
                 } else {
-                    do { target = Math.floor(Math.random() * waypoints.length); } while (target === start && waypoints.length > 1);
+                    do { target = waypoints[Math.floor(Math.random() * waypoints.length)].id; } while (target === start && waypoints.length > 1);
                 }
                 
                 let pathIds = getPath(start, target); pathIds.shift();
                 this.path = pathIds;
-                this.targetNode = this.path.length > 0 ? waypoints[this.path[0]] : waypoints[target];
+                this.targetNode = this.path.length > 0 ? waypoints.find(w=>w.id===this.path[0]) : waypoints.find(w=>w.id===target);
             }
         }
         
@@ -492,15 +522,15 @@ class Crewmate {
     }
 }
 
-const player = new Crewmate(waypoints[4].x, waypoints[4].y, true, 'Red');
+const player = new Crewmate(waypoints.find(w=>w.id===4).x, waypoints.find(w=>w.id===4).y, true, 'Red');
 const bots = [
-    new Crewmate(waypoints[0].x, waypoints[0].y, false, 'Blue'),
-    new Crewmate(waypoints[1].x, waypoints[1].y, false, 'Green'),
-    new Crewmate(waypoints[5].x, waypoints[5].y, false, 'Yellow'),
-    new Crewmate(waypoints[8].x, waypoints[8].y, false, 'Pink'),
-    new Crewmate(waypoints[9].x, waypoints[9].y, false, 'Cyan'),
-    new Crewmate(waypoints[11].x, waypoints[11].y, false, 'Black'), 
-    new Crewmate(waypoints[7].x, waypoints[7].y, false, 'Orange')
+    new Crewmate(waypoints.find(w=>w.id===0).x, waypoints.find(w=>w.id===0).y, false, 'Blue'),
+    new Crewmate(waypoints.find(w=>w.id===1).x, waypoints.find(w=>w.id===1).y, false, 'Green'),
+    new Crewmate(waypoints.find(w=>w.id===5).x, waypoints.find(w=>w.id===5).y, false, 'Yellow'),
+    new Crewmate(waypoints.find(w=>w.id===8).x, waypoints.find(w=>w.id===8).y, false, 'Pink'),
+    new Crewmate(waypoints.find(w=>w.id===9).x, waypoints.find(w=>w.id===9).y, false, 'Cyan'),
+    new Crewmate(waypoints.find(w=>w.id===11).x, waypoints.find(w=>w.id===11).y, false, 'Black'), 
+    new Crewmate(waypoints.find(w=>w.id===7).x, waypoints.find(w=>w.id===7).y, false, 'Orange')
 ];
 
 function assignRoles() {
@@ -525,6 +555,78 @@ function assignRoles() {
         document.getElementById('kill-btn').style.display = 'none';
         document.getElementById('sabotage-btn').style.display = 'none';
     }
+}
+assignRoles();
+
+// --- MAP EXPORTER TOOL ---
+window.exportMapImage = function() {
+    let mCanvas = document.createElement('canvas');
+    mCanvas.width = WORLD_W; mCanvas.height = WORLD_H;
+    let mCtx = mCanvas.getContext('2d');
+
+    mCtx.fillStyle = "#2a2a2a"; mCtx.fillRect(0, 0, WORLD_W, WORLD_H);
+    
+    mCtx.fillStyle = "#1e293b"; mCtx.beginPath(); mCtx.arc(250, 300, 130, 0, Math.PI*2); mCtx.fill();
+    mCtx.lineWidth = 2; mCtx.strokeStyle = "#334155";
+    for(let i=130; i<=370; i+=25) { 
+        mCtx.beginPath(); mCtx.moveTo(i, 170); mCtx.lineTo(i, 430); mCtx.stroke(); 
+        mCtx.beginPath(); mCtx.moveTo(130, i-130+170); mCtx.lineTo(370, i-130+170); mCtx.stroke(); 
+    }
+    let radGrad = mCtx.createRadialGradient(250, 300, 5, 250, 300, 95);
+    radGrad.addColorStop(0, "#ffffff"); radGrad.addColorStop(0.25, "#38bdf8"); radGrad.addColorStop(0.8, "rgba(2, 132, 199, 0.2)"); radGrad.addColorStop(1, "rgba(0,0,0,0)");
+    mCtx.fillStyle = radGrad; mCtx.beginPath(); mCtx.arc(250, 300, 95, 0, Math.PI*2); mCtx.fill();
+    mCtx.strokeStyle = "#0284c7"; mCtx.lineWidth = 12; mCtx.beginPath(); mCtx.arc(250, 300, 85, 0, Math.PI*2); mCtx.stroke();
+    mCtx.fillStyle = "#64748b"; mCtx.fillRect(242, 170, 16, 45); mCtx.fillRect(242, 385, 16, 45); mCtx.fillRect(130, 292, 45, 16); mCtx.fillRect(325, 292, 45, 16);
+
+    mCtx.fillStyle = "#1e293b"; mCtx.fillRect(1130, 480, 290, 160);
+    mCtx.fillStyle = "#0f172a"; mCtx.fillRect(1145, 495, 260, 130);
+    mCtx.strokeStyle = "#334155"; mCtx.lineWidth = 6; mCtx.strokeRect(1145, 495, 260, 130);
+    let holoBase = mCtx.createRadialGradient(1275, 560, 5, 1275, 560, 75);
+    holoBase.addColorStop(0, "rgba(34, 197, 94, 0.45)"); holoBase.addColorStop(1, "rgba(0,0,0,0)");
+    mCtx.fillStyle = holoBase; mCtx.fillRect(1150, 500, 250, 120);
+    mCtx.strokeStyle = "rgba(74, 222, 128, 0.6)"; mCtx.lineWidth = 3;
+    if(mCtx.ellipse) {
+        mCtx.beginPath(); mCtx.ellipse(1275, 560, 90, 45, 0, 0, Math.PI*2); mCtx.stroke();
+        mCtx.beginPath(); mCtx.ellipse(1275, 560, 45, 22, 0, 0, Math.PI*2); mCtx.stroke();
+    }
+
+    function drawC(x, y, size) {
+        mCtx.fillStyle = "rgba(0,0,0,0.4)"; mCtx.fillRect(x+5, y+5, size, size);
+        mCtx.fillStyle = "#8B5A2B"; mCtx.fillRect(x, y, size, size);
+        mCtx.lineWidth = 4; mCtx.strokeStyle = "#5C3A21"; mCtx.strokeRect(x+2, y+2, size-4, size-4);
+        mCtx.beginPath(); mCtx.moveTo(x+4, y+4); mCtx.lineTo(x+size-4, y+size-4); mCtx.stroke();
+        mCtx.beginPath(); mCtx.moveTo(x+size-4, y+4); mCtx.lineTo(x+4, y+size-4); mCtx.stroke();
+        mCtx.fillStyle = "#d2b48c"; mCtx.fillRect(x + size/2 - 5, y, 10, size);
+    }
+    drawC(840, 1310, 75); drawC(930, 1280, 95); drawC(885, 1375, 85);
+
+    mCtx.save();
+    mCtx.beginPath(); mCtx.rect(850, 250, 200, 20); mCtx.clip();
+    mCtx.fillStyle = "#eab308"; mCtx.fillRect(850, 250, 200, 20);
+    mCtx.fillStyle = "#0f172a";
+    for(let i=-30; i<250; i+=35) {
+        mCtx.beginPath(); mCtx.moveTo(850+i, 250); mCtx.lineTo(850+i+20, 250); mCtx.lineTo(850+i+5, 270); mCtx.lineTo(850+i-15, 270); mCtx.fill();
+    }
+    mCtx.restore();
+    mCtx.fillStyle = "#334155"; mCtx.fillRect(810, 50, 75, 165); 
+    mCtx.fillStyle = "#1e293b"; mCtx.fillRect(815, 55, 65, 155); 
+    mCtx.fillStyle = "#020617"; mCtx.fillRect(822, 65, 51, 40); mCtx.fillRect(822, 115, 51, 85); 
+
+    mCtx.fillStyle = "#475569"; mCtx.strokeStyle = "#0f172a"; mCtx.lineWidth = 4;
+    vents.forEach(v => {
+        mCtx.fillRect(v.x - 30, v.y - 30, 60, 60); mCtx.strokeRect(v.x - 30, v.y - 30, 60, 60);
+        mCtx.beginPath(); for(let i = -15; i <= 15; i += 10) { mCtx.moveTo(v.x - 21, v.y + i); mCtx.lineTo(v.x + 21, v.y + i); } mCtx.stroke();
+    });
+
+    mCtx.fillStyle = "#4a5a6a"; walls.forEach(w => mCtx.fillRect(w.x, w.y, w.w, w.h));
+
+    mCtx.fillStyle = "#475569"; mCtx.fillRect(elecPanel.x, elecPanel.y, elecPanel.w, elecPanel.h);
+    mCtx.fillStyle = "white"; mCtx.font = "bold 20px 'Varela Round'"; mCtx.textAlign = "center"; mCtx.fillText("⚡", elecPanel.x + elecPanel.w/2, elecPanel.y + elecPanel.h/2 + 7);
+
+    let link = document.createElement('a');
+    link.download = 'PluhUs_Engine_Map.png';
+    link.href = mCanvas.toDataURL('image/png');
+    link.click();
 }
 
 // --- CLICKABLE UI & INPUT HANDLERS ---
@@ -1107,6 +1209,4 @@ function gameLoop() {
     requestAnimationFrame(gameLoop);
 }
 
-// Start Game
-assignRoles();
 gameLoop();
