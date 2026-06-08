@@ -6,6 +6,7 @@ window.onresize = () => { canvas.width = window.innerWidth; canvas.height = wind
 const standImg = new Image(); standImg.src = 'Stand_mogus.png';
 const walkImg = new Image();  walkImg.src = 'walk_mogus_1.png';
 const deadImg = new Image();  deadImg.src = 'Death_mogus.png';
+const ghostImg = new Image(); ghostImg.src = 'ghost_mongus.png';
 
 const drawSize = 60; 
 let gamePaused = false; 
@@ -13,46 +14,64 @@ let gameWon = false;
 
 window.globalPlayerSpeed = 5;
 window.globalBotSpeed = 3.5;
+window.devSeeGhosts = false;
+window.devSeeGhostChat = false;
 
-// --- DYNAMIC VENT UI INJECTION (Clickable Arrows) ---
-const ventUIStyle = document.createElement('style');
-ventUIStyle.innerHTML = `
-    .vent-arrow {
-        background: none; border: none; color: rgba(255,255,255,0.5); 
-        font-size: 80px; cursor: pointer; text-shadow: 0 0 15px #000;
-        pointer-events: auto; transition: transform 0.1s, color 0.1s;
-        padding: 0 40px;
-    }
+// --- DYNAMIC UI INJECTION (Tablet, Animations, Eject Screen, Discuss) ---
+const customStyles = document.createElement('style');
+customStyles.innerHTML = `
+    .vent-arrow { background: none; border: none; color: rgba(255,255,255,0.5); font-size: 80px; cursor: pointer; text-shadow: 0 0 15px #000; pointer-events: auto; transition: transform 0.1s, color 0.1s; padding: 0 40px; }
     .vent-arrow:hover { color: rgba(255,255,255,1); transform: scale(1.2); }
     .vent-arrow:active { transform: scale(0.9); }
+    
+    /* Tablet Meeting UI */
+    #voting-content { border: 20px solid #111; border-radius: 35px; box-shadow: 0 0 50px rgba(0,0,0,0.9), inset 0 0 10px rgba(255,255,255,0.1); position: relative; }
+    #voting-content::before { content: ''; position: absolute; top: -15px; left: 50%; transform: translateX(-50%); width: 10px; height: 10px; background: #333; border-radius: 50%; box-shadow: inset 0 0 2px #000; }
+    
+    /* End Screen Animation */
+    #end-text { animation: popBounce 1s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+    @keyframes popBounce { 0% { transform: scale(0); opacity: 0; } 50% { transform: scale(1.1); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+    
+    /* Discuss Animation */
+    #discuss-popup { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 150px; font-weight: bold; font-family: 'Varela Round'; color: #ff4747; text-shadow: 0 0 30px #000, 4px 4px 0 #fff; z-index: 2000; pointer-events: none; opacity: 0; }
+    .anim-discuss { animation: discussSlam 2s forwards; }
+    @keyframes discussSlam { 0% { transform: translate(-50%, -50%) scale(3); opacity: 0; } 15% { transform: translate(-50%, -50%) scale(1); opacity: 1; } 80% { transform: translate(-50%, -50%) scale(0.8); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; } }
+
+    /* Eject Screen */
+    #eject-screen { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 1500; align-items: center; justify-content: center; overflow: hidden; font-family: 'Varela Round'; }
+    #eject-text { color: #fff; font-size: 40px; font-weight: bold; white-space: nowrap; }
+    .anim-eject { animation: driftSpace 5s linear forwards; }
+    @keyframes driftSpace { 0% { transform: translateX(-100vw) rotate(-20deg); } 100% { transform: translateX(100vw) rotate(360deg); } }
 `;
-document.head.appendChild(ventUIStyle);
+document.head.appendChild(customStyles);
 
 const ventUI = document.createElement('div');
 ventUI.id = 'vent-ui';
 ventUI.style.cssText = 'display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 400px; justify-content: space-between; z-index: 1000; pointer-events: none;';
-ventUI.innerHTML = `
-    <button id="vent-left" class="vent-arrow">◀</button>
-    <button id="vent-right" class="vent-arrow">▶</button>
-`;
+ventUI.innerHTML = `<button id="vent-left" class="vent-arrow">◀</button><button id="vent-right" class="vent-arrow">▶</button>`;
 document.body.appendChild(ventUI);
+
+const discussEl = document.createElement('div');
+discussEl.id = 'discuss-popup';
+discussEl.innerText = "DISCUSS!";
+document.body.appendChild(discussEl);
+
+const ejectScreen = document.createElement('div');
+ejectScreen.id = 'eject-screen';
+ejectScreen.innerHTML = `<div id="eject-text"></div>`;
+document.body.appendChild(ejectScreen);
 
 document.getElementById('vent-left').onclick = () => window.navigateVent(-1);
 document.getElementById('vent-right').onclick = () => window.navigateVent(1);
 
 // --- DEV MENU SYSTEM ---
-window.devVignetteEnabled = true;
-let secretBuffer = "";
-
 window.updateSpeeds = function() {
     window.globalPlayerSpeed = parseFloat(document.getElementById('p-speed').value);
     window.globalBotSpeed = parseFloat(document.getElementById('b-speed').value);
     document.getElementById('p-spd-val').innerText = window.globalPlayerSpeed;
     document.getElementById('b-spd-val').innerText = window.globalBotSpeed;
     if (player && bots.length > 0) {
-        [player, ...bots].forEach(c => {
-            c.speed = c.isPlayer ? window.globalPlayerSpeed : window.globalBotSpeed;
-        });
+        [player, ...bots].forEach(c => { if(!c.isDead) c.speed = c.isPlayer ? window.globalPlayerSpeed : window.globalBotSpeed; });
     }
 };
 
@@ -62,8 +81,13 @@ devMenu.style.cssText = 'display: none; position: absolute; top: 70px; right: 20
 devMenu.innerHTML = `
     <h3 style="margin: 0 0 10px 0; border-bottom: 1px solid #0f0; padding-bottom: 5px;">🔧 DEV MENU</h3>
     <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
-        <input type="checkbox" id="dev-vignette" checked onchange="window.devVignetteEnabled = this.checked" style="accent-color: #0f0;"> 
-        Enable Vignette (Fog)
+        <input type="checkbox" id="dev-vignette" checked onchange="window.devVignetteEnabled = this.checked" style="accent-color: #0f0;"> Enable Vignette
+    </label>
+    <label style="cursor: pointer; display: flex; align-items: center; gap: 8px; margin-top:5px;">
+        <input type="checkbox" onchange="window.devSeeGhosts = this.checked" style="accent-color: #0f0;"> See Ghosts
+    </label>
+    <label style="cursor: pointer; display: flex; align-items: center; gap: 8px; margin-top:5px;">
+        <input type="checkbox" onchange="window.devSeeGhostChat = this.checked" style="accent-color: #0f0;"> See Ghost Chat
     </label>
     <h4 style="margin: 15px 0 5px 0; font-size: 14px; border-bottom: 1px dashed #0f0; padding-bottom: 3px;">SPEED CONTROLS</h4>
     <label style="display: flex; justify-content: space-between; font-size: 12px; margin-top: 5px;">
@@ -72,7 +96,6 @@ devMenu.innerHTML = `
     <label style="display: flex; justify-content: space-between; font-size: 12px; margin-top: 5px;">
         Bots: <input type="range" id="b-speed" min="1" max="10" value="3.5" step="0.5" onchange="window.updateSpeeds()" style="width: 80px; margin: 0 10px;"> <span id="b-spd-val">3.5</span>
     </label>
-    <button onclick="window.exportMapImage()" style="background: #22c55e; color: #111; border: 1px solid #22c55e; cursor: pointer; padding: 5px 15px; border-radius: 3px; width: 100%; margin-top: 15px; font-weight:bold;">📸 Export Map PNG</button>
     <div style="margin-top: 15px; text-align: right;">
         <button onclick="document.getElementById('dev-menu').style.display='none'" style="background: #111; color: #0f0; border: 1px solid #0f0; cursor: pointer; padding: 5px 15px; border-radius: 3px;">Close</button>
     </div>
@@ -81,13 +104,11 @@ document.body.appendChild(devMenu);
 
 // --- GAME MODE LOGIC ---
 let gameMode = localStorage.getItem('chromeus_mode') || 'random';
-
 window.toggleGameMode = function() {
     gameMode = (gameMode === 'random') ? 'always_impostor' : 'random';
     localStorage.setItem('chromeus_mode', gameMode);
     location.reload();
 }
-
 window.addEventListener('DOMContentLoaded', () => {
     const modeBtn = document.getElementById('mode-toggle');
     if (modeBtn) {
@@ -102,7 +123,6 @@ let lastTick = Date.now();
 let lightsOut = false;
 let visionRadius = 500; 
 let isSabotageMapOpen = false;
-
 let gaslightCounters = {};
 let gaslightTarget = null;
 
@@ -130,75 +150,59 @@ const doors = [
 const elecPanel = { x: 950, y: 50, w: 100, h: 60 };
 
 const vents = [
-    { x: 200, y: 250 },   
-    { x: 950, y: 200 },   
-    { x: 1300, y: 650 },  
-    { x: 200, y: 1200 }   
+    { x: 200, y: 250 }, { x: 950, y: 200 }, { x: 1300, y: 650 }, { x: 200, y: 1200 }   
 ];
 
+// Added Node 13 for Cafeteria Center (1000, 750)
 const waypoints = [
     { id: 0, x: 170, y: 270, edges: [2] },         
     { id: 1, x: 170, y: 1170, edges: [2] },        
     { id: 2, x: 170, y: 670, edges: [0, 1, 4] },   
     { id: 4, x: 620, y: 670, edges: [2, 6] },  
     { id: 5, x: 970, y: 150, edges: [12] },       
-    { id: 6, x: 920, y: 670, edges: [4, 7, 10, 12] },  
-    { id: 7, x: 1270, y: 670, edges: [6, 8, 9] },  
+    { id: 6, x: 920, y: 670, edges: [4, 7, 10, 12, 13] },  
+    { id: 7, x: 1270, y: 670, edges: [6, 8, 9, 13] },  
     { id: 8, x: 1370, y: 470, edges: [7] },        
     { id: 9, x: 1370, y: 870, edges: [7] },        
     { id: 10, x: 920, y: 1070, edges: [6, 11] },   
     { id: 11, x: 970, y: 1270, edges: [10] },     
-    { id: 12, x: 920, y: 350, edges: [5, 6] }      
+    { id: 12, x: 920, y: 350, edges: [5, 6] },
+    { id: 13, x: 1000, y: 750, edges: [6, 7] } // Cafeteria Center
 ];
 
 function checkCollision(nx, ny, size) {
-    let padding = 5;
-    let left = nx + padding; let right = nx + size - padding;
+    let padding = 5; let left = nx + padding; let right = nx + size - padding;
     let top = ny + padding; let bottom = ny + size - padding;
-
-    for (let w of walls) {
-        if (right > w.x && left < w.x + w.w && bottom > w.y && top < w.y + w.h) return true;
-    }
-    for (let d of doors) {
-        if (d.isClosed && right > d.x && left < d.x + d.w && bottom > d.y && top < d.y + d.h) return true;
-    }
+    for (let w of walls) { if (right > w.x && left < w.x + w.w && bottom > w.y && top < w.y + w.h) return true; }
+    for (let d of doors) { if (d.isClosed && right > d.x && left < d.x + d.w && bottom > d.y && top < d.y + d.h) return true; }
     return false;
 }
 
 // --- DYNAMIC PIXEL RECOLORER ---
 function getTintedSprite(img, suitHex) {
     let tCanvas = document.createElement('canvas');
-    tCanvas.width = drawSize; 
-    tCanvas.height = drawSize;
+    tCanvas.width = drawSize; tCanvas.height = drawSize;
     let tCtx = tCanvas.getContext('2d');
     tCtx.drawImage(img, 0, 0, drawSize, drawSize);
 
     try {
         const suitRgb = parseInt(suitHex.slice(1), 16);
-        const rTarget = (suitRgb >> 16) & 255;
-        const gTarget = (suitRgb >> 8) & 255;
-        const bTarget = suitRgb & 255;
-
+        const rTarget = (suitRgb >> 16) & 255; const gTarget = (suitRgb >> 8) & 255; const bTarget = suitRgb & 255;
         let imgData = tCtx.getImageData(0, 0, drawSize, drawSize);
         let data = imgData.data;
 
         for (let i = 0; i < data.length; i += 4) {
             let r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
             if (a === 0) continue; 
-
             let isGrayscale = Math.abs(r - g) < 20 && Math.abs(g - b) < 20 && Math.abs(r - b) < 20;
             let isNotBlack = r > 40 || g > 40 || b > 40; 
-
             if (isGrayscale && isNotBlack) {
                 let brightness = r / 255; 
-                data[i] = rTarget * brightness;
-                data[i+1] = gTarget * brightness;
-                data[i+2] = bTarget * brightness;
+                data[i] = rTarget * brightness; data[i+1] = gTarget * brightness; data[i+2] = bTarget * brightness;
             }
         }
         tCtx.putImageData(imgData, 0, 0);
     } catch (e) {
-        // Safe offline fallback
         let fCanvas = document.createElement('canvas');
         fCanvas.width = drawSize; fCanvas.height = drawSize;
         let fCtx = fCanvas.getContext('2d');
@@ -210,7 +214,6 @@ function getTintedSprite(img, suitHex) {
         fCtx.drawImage(img, 0, 0, drawSize, drawSize);
         return fCanvas;
     }
-    
     return tCanvas;
 }
 
@@ -223,7 +226,6 @@ function getClosestNode(x, y) {
     return closest;
 }
 
-// FIXED THE CRASH: Now looks up the Node properly by ID!
 function getPath(startId, endId) {
     if (startId === endId) return [];
     let queue = [[startId]];
@@ -237,13 +239,30 @@ function getPath(startId, endId) {
         if (!nodeData) continue; 
 
         for (let neighbor of nodeData.edges) {
-            if (!visited.has(neighbor)) {
-                visited.add(neighbor);
-                queue.push([...path, neighbor]);
-            }
+            if (!visited.has(neighbor)) { visited.add(neighbor); queue.push([...path, neighbor]); }
         }
     }
     return [];
+}
+
+function tpToCafe() {
+    let alive = [player, ...bots].filter(c => !c.isDead && !c.isEjected);
+    let radius = 150;
+    let angleStep = (Math.PI * 2) / alive.length;
+    alive.forEach((c, i) => {
+        c.x = 1000 + Math.cos(angleStep * i) * radius;
+        c.y = 750 + Math.sin(angleStep * i) * radius;
+        c.targetNode = null;
+        c.path = [];
+        c.inVent = false;
+        c.isMoving = false;
+    });
+    
+    // Auto-center camera for player
+    if (!player.isDead) {
+        player.x = 1000 + Math.cos(0) * radius;
+        player.y = 750 + Math.sin(0) * radius;
+    }
 }
 
 // --- CREWMATE ENGINE ---
@@ -259,97 +278,89 @@ class Crewmate {
             'Pink': '#ff69b4', 'Cyan': '#00ffff', 'Black': '#666666', 'Orange': '#ff8c00'
         };
         this.colorHex = colorMap[this.colorName] || '#ffffff';
-        this.tintedStand = null;
-        this.tintedWalk = null;
-        this.tintedDead = null;
+        this.tintedStand = null; this.tintedWalk = null; this.tintedDead = null; this.tintedGhost = null;
 
         this.isImpostor = false;
         this.internalKillCooldown = 600; 
         
         this.speed = isPlayer ? window.globalPlayerSpeed : window.globalBotSpeed;
-        this.path = [];
-        this.targetNode = null;
-        this.waitTimer = 0;
-        this.goingToFixLights = false;
-        this.finalOffsetX = 0;
-        this.finalOffsetY = 0;
+        this.path = []; this.targetNode = null; this.waitTimer = 0;
+        this.goingToFixLights = false; this.finalOffsetX = 0; this.finalOffsetY = 0;
         
-        this.inVent = false;
-        this.currentVent = -1;
-        this.ventTargetX = x;
-        this.ventTargetY = y;
+        this.inVent = false; this.currentVent = -1;
+        this.ventTargetX = x; this.ventTargetY = y;
         this.stuckTimer = 0; 
-
-        this.isMoving = false;
-        this.lastDir = 'right';
+        this.isMoving = false; this.lastDir = 'right';
         this.memory = {}; 
-        
-        this.swaySpeed = 200 + Math.random() * 200;
-        this.swayIntensity = 0.5 + Math.random() * 0.8;
+        this.swaySpeed = 200 + Math.random() * 200; this.swayIntensity = 0.5 + Math.random() * 0.8;
     }
 
     update() {
-        if (this.isDead || this.isEjected || gamePaused || gameWon) {
+        if (this.isEjected || gamePaused || gameWon) {
             this.isMoving = false;
             return; 
         }
+
+        // --- GHOST FREE ROAM MECHANICS ---
+        if (this.isDead) {
+            this.speed = (this.isPlayer ? window.globalPlayerSpeed : window.globalBotSpeed) * 1.5; // Ghosts are fast
+            if (this.isPlayer) {
+                let nx = this.x; let ny = this.y;
+                let moved = false;
+                if (keys['KeyW']) { ny -= this.speed; moved = true; }
+                if (keys['KeyS']) { ny += this.speed; moved = true; }
+                if (keys['KeyA']) { nx -= this.speed; moved = true; this.lastDir = 'left'; }
+                if (keys['KeyD']) { nx += this.speed; moved = true; this.lastDir = 'right'; }
+                if (moved) { this.x = nx; this.y = ny; this.isMoving = true; } 
+                else { this.isMoving = false; }
+            } else {
+                // Bots wander aimlessly ignoring walls
+                this.x += (Math.random() - 0.5) * this.speed;
+                this.y += (Math.random() - 0.5) * this.speed;
+                // Keep ghosts in bounds
+                this.x = Math.max(0, Math.min(WORLD_W, this.x));
+                this.y = Math.max(0, Math.min(WORLD_H, this.y));
+                this.isMoving = true;
+            }
+            return; // Skip living logic
+        }
         
-        // --- VENT EASE-OUT CAMERA SLIDE ---
         if (this.inVent) {
             this.isMoving = false;
-            let dx = this.ventTargetX - this.x;
-            let dy = this.ventTargetY - this.y;
-            
-            if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
-                this.x += dx * 0.08; 
-                this.y += dy * 0.08;
-            } else {
-                this.x = this.ventTargetX;
-                this.y = this.ventTargetY;
-            }
+            let dx = this.ventTargetX - this.x; let dy = this.ventTargetY - this.y;
+            if (Math.abs(dx) > 1 || Math.abs(dy) > 1) { this.x += dx * 0.08; this.y += dy * 0.08; } 
+            else { this.x = this.ventTargetX; this.y = this.ventTargetY; }
             return;
         }
 
-        // --- PLAYER WALL SLIDING FIX ---
+        this.isMoving = false;
+
         if (this.isPlayer) {
-            let nx = this.x; let ny = this.y;
-            let moved = false;
+            let nx = this.x; let ny = this.y; let moved = false;
             if (keys['KeyW']) { ny -= this.speed; moved = true; }
             if (keys['KeyS']) { ny += this.speed; moved = true; }
             if (keys['KeyA']) { nx -= this.speed; moved = true; this.lastDir = 'left'; }
             if (keys['KeyD']) { nx += this.speed; moved = true; this.lastDir = 'right'; }
-            
             if (moved) {
-                if (!checkCollision(nx, ny, drawSize)) {
-                    this.x = nx; this.y = ny; this.isMoving = true;
-                } else {
+                if (!checkCollision(nx, ny, drawSize)) { this.x = nx; this.y = ny; this.isMoving = true; } 
+                else {
                     if (!checkCollision(nx, this.y, drawSize)) { this.x = nx; this.isMoving = true; }
                     else if (!checkCollision(this.x, ny, drawSize)) { this.y = ny; this.isMoving = true; }
-                    else { this.isMoving = false; }
                 }
-            } else {
-                this.isMoving = false;
             }
         } else {
-            
             if (this.isImpostor) {
                 if (this.internalKillCooldown > 0) this.internalKillCooldown--;
                 if (this.internalKillCooldown <= 0) {
                     let aliveCrew = [player, ...bots].filter(c => !c.isDead && !c.isEjected && !c.isImpostor && !c.inVent);
-                    let target = null;
-                    let minDist = Infinity;
-                    aliveCrew.forEach(c => {
-                        let d = Math.hypot(c.x - this.x, c.y - this.y);
-                        if (d < minDist) { minDist = d; target = c; }
-                    });
+                    let target = null; let minDist = Infinity;
+                    aliveCrew.forEach(c => { let d = Math.hypot(c.x - this.x, c.y - this.y); if (d < minDist) { minDist = d; target = c; } });
                     
                     if (target && minDist < 200) { 
                         let witnesses = aliveCrew.filter(c => c !== target && Math.hypot(c.x - this.x, c.y - this.y) < 400);
                         if (witnesses.length === 0 || lightsOut) {
                             if (minDist < 90) {
-                                target.isDead = true; target.killer = this;
-                                this.internalKillCooldown = 900; 
-
+                                target.isDead = true; target.killer = this; this.internalKillCooldown = 900; 
                                 let sightRadius = lightsOut ? 150 : 400;
                                 bots.forEach(w => {
                                     if (!w.isDead && !w.isEjected && !w.inVent && w !== target && w !== this) {
@@ -358,15 +369,10 @@ class Crewmate {
                                         }
                                     }
                                 });
-
-                                checkWinCondition();
-                                this.targetNode = null; this.path = []; this.waitTimer = 0;
-                                return; 
+                                checkWinCondition(); this.targetNode = null; this.path = []; this.waitTimer = 0; return; 
                             } else {
                                 let angle = Math.atan2(target.y - this.y, target.x - this.x);
-                                let nx = this.x + Math.cos(angle) * this.speed;
-                                let ny = this.y + Math.sin(angle) * this.speed;
-                                
+                                let nx = this.x + Math.cos(angle) * this.speed; let ny = this.y + Math.sin(angle) * this.speed;
                                 if (!checkCollision(nx, ny, drawSize)) {
                                     this.x = nx; this.y = ny; this.isMoving = true;
                                     if (Math.abs(Math.cos(angle)) > 0.1) this.lastDir = (Math.cos(angle) > 0) ? 'right' : 'left';
@@ -379,55 +385,41 @@ class Crewmate {
             }
             
             if (lightsOut && !this.goingToFixLights && !this.isImpostor) {
-                this.goingToFixLights = true;
-                let start = getClosestNode(this.x, this.y);
-                let pathIds = getPath(start, 5); pathIds.shift();
-                this.path = pathIds;
+                this.goingToFixLights = true; let start = getClosestNode(this.x, this.y);
+                let pathIds = getPath(start, 5); pathIds.shift(); this.path = pathIds;
                 let targetData = waypoints.find(w => w.id === this.path[0]);
                 this.targetNode = this.path.length > 0 ? targetData : waypoints.find(w => w.id === 5);
             } else if (!lightsOut) { this.goingToFixLights = false; }
 
             if (this.goingToFixLights && Math.hypot(this.x - waypoints.find(w=>w.id===5).x, this.y - waypoints.find(w=>w.id===5).y) < 100) {
-                this.isMoving = false;
-                if (Math.random() < 0.01) { lightsOut = false; visionRadius = 500; closeTask(); }
-                return;
+                this.isMoving = false; if (Math.random() < 0.01) { lightsOut = false; visionRadius = 500; closeTask(); } return;
             }
             
-            if (!this.isImpostor && this.waitTimer <= 0 && Math.random() < 0.003) {
-                this.waitTimer = 20 + Math.random() * 40; 
-            }
-
+            if (!this.isImpostor && this.waitTimer <= 0 && Math.random() < 0.003) this.waitTimer = 20 + Math.random() * 40; 
             if (this.waitTimer > 0) { this.waitTimer--; this.isMoving = false; } 
             else if (this.targetNode) {
                 let isFinalNode = (this.path.length === 0);
                 let targetX = this.targetNode.x + (isFinalNode ? this.finalOffsetX : 0);
                 let targetY = this.targetNode.y + (isFinalNode ? this.finalOffsetY : 0);
-                
-                let dx = targetX - this.x; let dy = targetY - this.y;
-                let dist = Math.hypot(dx, dy);
+                let dx = targetX - this.x; let dy = targetY - this.y; let dist = Math.hypot(dx, dy);
 
                 if (dist < 10) {
                     this.path.shift(); 
                     if (this.path.length > 0) this.targetNode = waypoints.find(w=>w.id===this.path[0]); 
                     else { 
-                        this.targetNode = null; 
-                        this.finalOffsetX = (Math.random() - 0.5) * 60; 
-                        this.finalOffsetY = (Math.random() - 0.5) * 60;
+                        this.targetNode = null; this.finalOffsetX = (Math.random() - 0.5) * 60; this.finalOffsetY = (Math.random() - 0.5) * 60;
                         this.waitTimer = 100 + Math.random() * 200; 
                     }
                 } else {
-                    let angle = Math.atan2(dy, dx);
-                    let swayAngle = angle + (Math.PI / 2); 
+                    let angle = Math.atan2(dy, dx); let swayAngle = angle + (Math.PI / 2); 
                     let swayAmount = Math.sin(Date.now() / this.swaySpeed) * this.swayIntensity;
-                    
                     let nx = this.x + (Math.cos(angle) * this.speed) + (Math.cos(swayAngle) * swayAmount);
                     let ny = this.y + (Math.sin(angle) * this.speed) + (Math.sin(swayAngle) * swayAmount);
                     
                     let sepX = 0; let sepY = 0;
                     [player, ...bots].forEach(other => {
                         if (other !== this && !other.isDead && Math.hypot(this.x - other.x, this.y - other.y) < 40) {
-                            sepX += (this.x - other.x) * 0.05;
-                            sepY += (this.y - other.y) * 0.05;
+                            sepX += (this.x - other.x) * 0.05; sepY += (this.y - other.y) * 0.05;
                         }
                     });
                     nx += sepX; ny += sepY;
@@ -439,12 +431,8 @@ class Crewmate {
                         if (!checkCollision(nx, this.y, drawSize)) { this.x = nx; this.isMoving = true; this.stuckTimer = 0; }
                         else if (!checkCollision(this.x, ny, drawSize)) { this.y = ny; this.isMoving = true; this.stuckTimer = 0; }
                         else { 
-                            this.isMoving = false; 
-                            this.stuckTimer++;
-                            if (this.stuckTimer > 15) {
-                                this.targetNode = null;
-                                this.stuckTimer = 0;
-                            }
+                            this.isMoving = false; this.stuckTimer++;
+                            if (this.stuckTimer > 15) { this.targetNode = null; this.stuckTimer = 0; }
                         }
                     }
                 }
@@ -452,14 +440,9 @@ class Crewmate {
                 let start = getClosestNode(this.x, this.y);
                 let validTargets = waypoints.filter(wp => wp.id !== start && Math.hypot(wp.x - this.x, wp.y - this.y) > 500);
                 let target;
-                if (validTargets.length > 0) {
-                    target = validTargets[Math.floor(Math.random() * validTargets.length)].id;
-                } else {
-                    do { target = waypoints[Math.floor(Math.random() * waypoints.length)].id; } while (target === start && waypoints.length > 1);
-                }
-                
-                let pathIds = getPath(start, target); pathIds.shift();
-                this.path = pathIds;
+                if (validTargets.length > 0) { target = validTargets[Math.floor(Math.random() * validTargets.length)].id; } 
+                else { do { target = waypoints[Math.floor(Math.random() * waypoints.length)].id; } while (target === start && waypoints.length > 1); }
+                let pathIds = getPath(start, target); pathIds.shift(); this.path = pathIds;
                 this.targetNode = this.path.length > 0 ? waypoints.find(w=>w.id===this.path[0]) : waypoints.find(w=>w.id===target);
             }
         }
@@ -467,9 +450,7 @@ class Crewmate {
         if (!this.isPlayer && !lightsOut && !this.inVent) {
             [player, ...bots].forEach(other => {
                 if (other !== this && !other.isDead && !other.isEjected && !other.inVent) {
-                    if (Math.hypot(this.x - other.x, this.y - other.y) < 400) {
-                        this.memory[other.colorName] = Date.now(); 
-                    }
+                    if (Math.hypot(this.x - other.x, this.y - other.y) < 400) { this.memory[other.colorName] = Date.now(); }
                 }
             });
         }
@@ -478,20 +459,34 @@ class Crewmate {
     draw(ctx) {
         if (this.isEjected) return; 
 
-        if (standImg.complete && standImg.naturalWidth > 0 && !this.tintedStand) {
-            this.tintedStand = getTintedSprite(standImg, this.colorHex);
-        }
-        if (walkImg.complete && walkImg.naturalWidth > 0 && !this.tintedWalk) {
-            this.tintedWalk = getTintedSprite(walkImg, this.colorHex);
-        }
-        if (deadImg.complete && deadImg.naturalWidth > 0 && !this.tintedDead) {
-            this.tintedDead = getTintedSprite(deadImg, this.colorHex);
-        }
+        if (standImg.complete && !this.tintedStand) this.tintedStand = getTintedSprite(standImg, this.colorHex);
+        if (walkImg.complete && !this.tintedWalk) this.tintedWalk = getTintedSprite(walkImg, this.colorHex);
+        if (deadImg.complete && !this.tintedDead) this.tintedDead = getTintedSprite(deadImg, this.colorHex);
+        if (ghostImg.complete && !this.tintedGhost) this.tintedGhost = getTintedSprite(ghostImg, this.colorHex);
 
         ctx.save();
         ctx.translate(this.x + drawSize/2, this.y + drawSize/2);
         
         if (this.inVent) ctx.globalAlpha = 0.4;
+        
+        // --- DRAW GHOST IF DEAD ---
+        if (this.isDead && this.isCleanedUp) {
+            if (!player.isDead && !window.devSeeGhosts) { ctx.restore(); return; } // Invisible to alive players unless dev mode
+            ctx.globalAlpha = 0.5;
+            if (this.lastDir === 'left') ctx.scale(-1, 1);
+            let bob = Math.sin(Date.now() / 200) * 5;
+            ctx.drawImage(this.tintedGhost || ghostImg, -drawSize/2, -drawSize/2 + bob, drawSize, drawSize);
+            ctx.restore();
+            
+            // Ghost Name
+            ctx.fillStyle = this.colorHex; ctx.font = "14px 'Varela Round'"; ctx.textAlign = "center";
+            ctx.strokeStyle = "rgba(0,0,0,0.5)"; ctx.lineWidth = 3;
+            ctx.strokeText("👻 " + this.colorName, this.x + drawSize/2, this.y - 15);
+            ctx.fillText("👻 " + this.colorName, this.x + drawSize/2, this.y - 15);
+            return;
+        }
+        
+        // --- NORMAL ALIVE/BODY DRAW ---
         if (this.lastDir === 'left') ctx.scale(-1, 1);
         
         let currentImg = this.tintedStand || standImg;
@@ -511,26 +506,23 @@ class Crewmate {
         ctx.restore();
 
         if (!this.inVent || this.isPlayer) {
-            ctx.fillStyle = this.colorHex;
-            ctx.font = "bold 14px 'Varela Round'";
-            ctx.textAlign = "center";
-            ctx.strokeStyle = "black"; 
-            ctx.lineWidth = 3;
+            ctx.fillStyle = this.colorHex; ctx.font = "bold 14px 'Varela Round'"; ctx.textAlign = "center";
+            ctx.strokeStyle = "black"; ctx.lineWidth = 3;
             ctx.strokeText(this.colorName, this.x + drawSize/2, this.y - 5);
             ctx.fillText(this.colorName, this.x + drawSize/2, this.y - 5);
         }
     }
 }
 
-const player = new Crewmate(waypoints.find(w=>w.id===4).x, waypoints.find(w=>w.id===4).y, true, 'Red');
+const player = new Crewmate(waypoints.find(w=>w.id===13).x, waypoints.find(w=>w.id===13).y, true, 'Red');
 const bots = [
-    new Crewmate(waypoints.find(w=>w.id===0).x, waypoints.find(w=>w.id===0).y, false, 'Blue'),
-    new Crewmate(waypoints.find(w=>w.id===1).x, waypoints.find(w=>w.id===1).y, false, 'Green'),
-    new Crewmate(waypoints.find(w=>w.id===5).x, waypoints.find(w=>w.id===5).y, false, 'Yellow'),
-    new Crewmate(waypoints.find(w=>w.id===8).x, waypoints.find(w=>w.id===8).y, false, 'Pink'),
-    new Crewmate(waypoints.find(w=>w.id===9).x, waypoints.find(w=>w.id===9).y, false, 'Cyan'),
-    new Crewmate(waypoints.find(w=>w.id===11).x, waypoints.find(w=>w.id===11).y, false, 'Black'), 
-    new Crewmate(waypoints.find(w=>w.id===7).x, waypoints.find(w=>w.id===7).y, false, 'Orange')
+    new Crewmate(waypoints.find(w=>w.id===13).x-50, waypoints.find(w=>w.id===13).y-50, false, 'Blue'),
+    new Crewmate(waypoints.find(w=>w.id===13).x+50, waypoints.find(w=>w.id===13).y-50, false, 'Green'),
+    new Crewmate(waypoints.find(w=>w.id===13).x-50, waypoints.find(w=>w.id===13).y+50, false, 'Yellow'),
+    new Crewmate(waypoints.find(w=>w.id===13).x+50, waypoints.find(w=>w.id===13).y+50, false, 'Pink'),
+    new Crewmate(waypoints.find(w=>w.id===13).x-100, waypoints.find(w=>w.id===13).y, false, 'Cyan'),
+    new Crewmate(waypoints.find(w=>w.id===13).x+100, waypoints.find(w=>w.id===13).y, false, 'Black'), 
+    new Crewmate(waypoints.find(w=>w.id===13).x, waypoints.find(w=>w.id===13).y-100, false, 'Orange')
 ];
 
 function assignRoles() {
@@ -543,91 +535,14 @@ function assignRoles() {
     const taskDesc = document.querySelector('#task-list p');
     
     if (player.isImpostor) {
-        taskHeader.innerText = "Impostor";
-        taskHeader.style.color = "#ff4747";
-        taskDesc.innerText = "Sabotage and kill everyone.";
-        document.getElementById('kill-btn').style.display = 'flex';
-        document.getElementById('sabotage-btn').style.display = 'flex';
+        taskHeader.innerText = "Impostor"; taskHeader.style.color = "#ff4747"; taskDesc.innerText = "Sabotage and kill everyone.";
+        document.getElementById('kill-btn').style.display = 'flex'; document.getElementById('sabotage-btn').style.display = 'flex';
     } else {
-        taskHeader.innerText = "Crewmate";
-        taskHeader.style.color = "#3498db";
-        taskDesc.innerText = "Find the impostor and fix sabotages.";
-        document.getElementById('kill-btn').style.display = 'none';
-        document.getElementById('sabotage-btn').style.display = 'none';
+        taskHeader.innerText = "Crewmate"; taskHeader.style.color = "#3498db"; taskDesc.innerText = "Find the impostor and fix sabotages.";
+        document.getElementById('kill-btn').style.display = 'none'; document.getElementById('sabotage-btn').style.display = 'none';
     }
 }
 assignRoles();
-
-// --- MAP EXPORTER TOOL ---
-window.exportMapImage = function() {
-    let mCanvas = document.createElement('canvas');
-    mCanvas.width = WORLD_W; mCanvas.height = WORLD_H;
-    let mCtx = mCanvas.getContext('2d');
-
-    mCtx.fillStyle = "#2a2a2a"; mCtx.fillRect(0, 0, WORLD_W, WORLD_H);
-    
-    mCtx.fillStyle = "#1e293b"; mCtx.beginPath(); mCtx.arc(250, 300, 130, 0, Math.PI*2); mCtx.fill();
-    mCtx.lineWidth = 2; mCtx.strokeStyle = "#334155";
-    for(let i=130; i<=370; i+=25) { 
-        mCtx.beginPath(); mCtx.moveTo(i, 170); mCtx.lineTo(i, 430); mCtx.stroke(); 
-        mCtx.beginPath(); mCtx.moveTo(130, i-130+170); mCtx.lineTo(370, i-130+170); mCtx.stroke(); 
-    }
-    let radGrad = mCtx.createRadialGradient(250, 300, 5, 250, 300, 95);
-    radGrad.addColorStop(0, "#ffffff"); radGrad.addColorStop(0.25, "#38bdf8"); radGrad.addColorStop(0.8, "rgba(2, 132, 199, 0.2)"); radGrad.addColorStop(1, "rgba(0,0,0,0)");
-    mCtx.fillStyle = radGrad; mCtx.beginPath(); mCtx.arc(250, 300, 95, 0, Math.PI*2); mCtx.fill();
-    mCtx.strokeStyle = "#0284c7"; mCtx.lineWidth = 12; mCtx.beginPath(); mCtx.arc(250, 300, 85, 0, Math.PI*2); mCtx.stroke();
-    mCtx.fillStyle = "#64748b"; mCtx.fillRect(242, 170, 16, 45); mCtx.fillRect(242, 385, 16, 45); mCtx.fillRect(130, 292, 45, 16); mCtx.fillRect(325, 292, 45, 16);
-
-    mCtx.fillStyle = "#1e293b"; mCtx.fillRect(1130, 480, 290, 160);
-    mCtx.fillStyle = "#0f172a"; mCtx.fillRect(1145, 495, 260, 130);
-    mCtx.strokeStyle = "#334155"; mCtx.lineWidth = 6; mCtx.strokeRect(1145, 495, 260, 130);
-    let holoBase = mCtx.createRadialGradient(1275, 560, 5, 1275, 560, 75);
-    holoBase.addColorStop(0, "rgba(34, 197, 94, 0.45)"); holoBase.addColorStop(1, "rgba(0,0,0,0)");
-    mCtx.fillStyle = holoBase; mCtx.fillRect(1150, 500, 250, 120);
-    mCtx.strokeStyle = "rgba(74, 222, 128, 0.6)"; mCtx.lineWidth = 3;
-    if(mCtx.ellipse) {
-        mCtx.beginPath(); mCtx.ellipse(1275, 560, 90, 45, 0, 0, Math.PI*2); mCtx.stroke();
-        mCtx.beginPath(); mCtx.ellipse(1275, 560, 45, 22, 0, 0, Math.PI*2); mCtx.stroke();
-    }
-
-    function drawC(x, y, size) {
-        mCtx.fillStyle = "rgba(0,0,0,0.4)"; mCtx.fillRect(x+5, y+5, size, size);
-        mCtx.fillStyle = "#8B5A2B"; mCtx.fillRect(x, y, size, size);
-        mCtx.lineWidth = 4; mCtx.strokeStyle = "#5C3A21"; mCtx.strokeRect(x+2, y+2, size-4, size-4);
-        mCtx.beginPath(); mCtx.moveTo(x+4, y+4); mCtx.lineTo(x+size-4, y+size-4); mCtx.stroke();
-        mCtx.beginPath(); mCtx.moveTo(x+size-4, y+4); mCtx.lineTo(x+4, y+size-4); mCtx.stroke();
-        mCtx.fillStyle = "#d2b48c"; mCtx.fillRect(x + size/2 - 5, y, 10, size);
-    }
-    drawC(840, 1310, 75); drawC(930, 1280, 95); drawC(885, 1375, 85);
-
-    mCtx.save();
-    mCtx.beginPath(); mCtx.rect(850, 250, 200, 20); mCtx.clip();
-    mCtx.fillStyle = "#eab308"; mCtx.fillRect(850, 250, 200, 20);
-    mCtx.fillStyle = "#0f172a";
-    for(let i=-30; i<250; i+=35) {
-        mCtx.beginPath(); mCtx.moveTo(850+i, 250); mCtx.lineTo(850+i+20, 250); mCtx.lineTo(850+i+5, 270); mCtx.lineTo(850+i-15, 270); mCtx.fill();
-    }
-    mCtx.restore();
-    mCtx.fillStyle = "#334155"; mCtx.fillRect(810, 50, 75, 165); 
-    mCtx.fillStyle = "#1e293b"; mCtx.fillRect(815, 55, 65, 155); 
-    mCtx.fillStyle = "#020617"; mCtx.fillRect(822, 65, 51, 40); mCtx.fillRect(822, 115, 51, 85); 
-
-    mCtx.fillStyle = "#475569"; mCtx.strokeStyle = "#0f172a"; mCtx.lineWidth = 4;
-    vents.forEach(v => {
-        mCtx.fillRect(v.x - 30, v.y - 30, 60, 60); mCtx.strokeRect(v.x - 30, v.y - 30, 60, 60);
-        mCtx.beginPath(); for(let i = -15; i <= 15; i += 10) { mCtx.moveTo(v.x - 21, v.y + i); mCtx.lineTo(v.x + 21, v.y + i); } mCtx.stroke();
-    });
-
-    mCtx.fillStyle = "#4a5a6a"; walls.forEach(w => mCtx.fillRect(w.x, w.y, w.w, w.h));
-
-    mCtx.fillStyle = "#475569"; mCtx.fillRect(elecPanel.x, elecPanel.y, elecPanel.w, elecPanel.h);
-    mCtx.fillStyle = "white"; mCtx.font = "bold 20px 'Varela Round'"; mCtx.textAlign = "center"; mCtx.fillText("⚡", elecPanel.x + elecPanel.w/2, elecPanel.y + elecPanel.h/2 + 7);
-
-    let link = document.createElement('a');
-    link.download = 'PluhUs_Engine_Map.png';
-    link.href = mCanvas.toDataURL('image/png');
-    link.click();
-}
 
 // --- CLICKABLE UI & INPUT HANDLERS ---
 window.toggleSabotageMap = function() {
@@ -638,42 +553,28 @@ window.toggleSabotageMap = function() {
 
 window.triggerSabotage = function(type) {
     if (type === 'lights') {
-        if (globalSabotageCooldown === 0 && !lightsOut) {
-            lightsOut = true; visionRadius = 150;
-            globalSabotageCooldown = 30; 
-        }
+        if (globalSabotageCooldown === 0 && !lightsOut) { lightsOut = true; visionRadius = 150; globalSabotageCooldown = 30; }
     } else if (type.startsWith('door')) {
         let door = doors.find(d => d.id === type);
-        if (door && door.cooldown === 0 && !door.isClosed) {
-            door.isClosed = true;
-            door.closeTimer = 10; 
-            door.cooldown = 20; 
-        }
+        if (door && door.cooldown === 0 && !door.isClosed) { door.isClosed = true; door.closeTimer = 10; door.cooldown = 20; }
     }
 }
 
 window.openLightsTask = function() {
     if (player.inVent) return;
-    gamePaused = true;
-    switchStates = [false, false, false, false, false];
+    gamePaused = true; switchStates = [false, false, false, false, false];
     document.querySelectorAll('.switch').forEach(s => s.className = 'switch off');
     document.getElementById('task-layer').style.display = 'flex';
 }
 
 let switchStates = [false, false, false, false, false];
-window.closeTask = function() {
-    document.getElementById('task-layer').style.display = 'none';
-    gamePaused = false;
-}
+window.closeTask = function() { document.getElementById('task-layer').style.display = 'none'; gamePaused = false; }
 
 window.toggleSwitch = function(el) {
     let index = Array.from(el.parentNode.children).indexOf(el);
     switchStates[index] = !switchStates[index]; 
     el.className = switchStates[index] ? 'switch on' : 'switch off';
-    
-    if (switchStates.every(s => s === true)) {
-        setTimeout(() => { lightsOut = false; visionRadius = 500; closeTask(); }, 500);
-    }
+    if (switchStates.every(s => s === true)) setTimeout(() => { lightsOut = false; visionRadius = 500; closeTask(); }, 500);
 }
 
 window.doUse = () => { 
@@ -684,17 +585,13 @@ window.doUse = () => {
 
 window.doVent = () => {
     if(!player.isImpostor || lightsOut) return;
-    if(player.inVent) { 
-        player.inVent = false; 
-    } else {
+    if(player.inVent) { player.inVent = false; } 
+    else {
         let nearest = vents.findIndex(v => Math.hypot(player.x - v.x, player.y - v.y) < 100);
         if(nearest !== -1) { 
-            player.inVent = true; 
-            player.currentVent = nearest; 
-            player.ventTargetX = vents[nearest].x;
-            player.ventTargetY = vents[nearest].y;
-            player.x = vents[nearest].x; 
-            player.y = vents[nearest].y;
+            player.inVent = true; player.currentVent = nearest; 
+            player.ventTargetX = vents[nearest].x; player.ventTargetY = vents[nearest].y;
+            player.x = vents[nearest].x; player.y = vents[nearest].y;
         }
     }
 };
@@ -702,26 +599,20 @@ window.doVent = () => {
 window.navigateVent = (dir) => {
     if(!player.inVent) return;
     player.currentVent = (player.currentVent + dir + vents.length) % vents.length;
-    player.ventTargetX = vents[player.currentVent].x;
-    player.ventTargetY = vents[player.currentVent].y;
+    player.ventTargetX = vents[player.currentVent].x; player.ventTargetY = vents[player.currentVent].y;
 };
 
 window.doKill = () => {
     if(!player.isImpostor || killCooldown > 0 || player.inVent || gamePaused || lightsOut || isSabotageMapOpen) return;
     for (let bot of bots) {
         if (!bot.isDead && !bot.isEjected && !bot.inVent && Math.hypot(bot.x - player.x, bot.y - player.y) < 90) { 
-            bot.isDead = true; bot.killer = player; 
-            killCooldown = 20; 
-
+            bot.isDead = true; bot.killer = player; killCooldown = 20; 
             let sightRadius = lightsOut ? 150 : 400;
             bots.forEach(w => {
                 if (!w.isDead && !w.isEjected && !w.inVent && w !== bot) {
-                    if (Math.hypot(w.x - player.x, w.y - player.y) < sightRadius) {
-                        w.memory.sawKill = { killer: player.colorName, victim: bot.colorName, time: Date.now() };
-                    }
+                    if (Math.hypot(w.x - player.x, w.y - player.y) < sightRadius) { w.memory.sawKill = { killer: player.colorName, victim: bot.colorName, time: Date.now() }; }
                 }
             });
-
             checkWinCondition(); break; 
         }
     }
@@ -730,52 +621,41 @@ window.doKill = () => {
 window.doReport = () => {
     if(gamePaused || isSabotageMapOpen) return;
     let bodies = bots.filter(c => c.isDead && !c.isCleanedUp);
-    for (let b of bodies) {
-        if (Math.hypot(player.x - b.x, player.y - b.y) < 150) { triggerReport(player, b); break; }
-    }
+    for (let b of bodies) { if (Math.hypot(player.x - b.x, player.y - b.y) < 150) { triggerReport(player, b); break; } }
 };
 
 document.getElementById('use-btn').onclick = window.doUse;
 document.getElementById('kill-btn').onclick = window.doKill;
 document.getElementById('report-btn').onclick = window.doReport;
-let ventBtnEl = document.getElementById('vent-btn');
-if(ventBtnEl) ventBtnEl.onclick = window.doVent;
+let ventBtnEl = document.getElementById('vent-btn'); if(ventBtnEl) ventBtnEl.onclick = window.doVent;
 
 const keys = {};
 window.addEventListener('keyup', (e) => keys[e.code] = false);
 window.addEventListener('keydown', (e) => {
-    keys[e.code] = true;
-    if (e.code === 'Space') e.preventDefault(); 
-    
+    keys[e.code] = true; if (e.code === 'Space') e.preventDefault(); 
     if (e.key && e.key.length === 1) {
-        secretBuffer += e.key.toLowerCase();
-        if (secretBuffer.length > 6) secretBuffer = secretBuffer.slice(-6);
+        secretBuffer += e.key.toLowerCase(); if (secretBuffer.length > 6) secretBuffer = secretBuffer.slice(-6);
         if (secretBuffer === 'pluhus' || secretBuffer === 'chrome') { 
-            const dm = document.getElementById('dev-menu');
-            dm.style.display = (dm.style.display === 'none') ? 'block' : 'none';
-            secretBuffer = ''; 
+            const dm = document.getElementById('dev-menu'); dm.style.display = (dm.style.display === 'none') ? 'block' : 'none'; secretBuffer = ''; 
         }
     }
-    
-    if (gamePaused || gameWon || player.isDead || player.isEjected) return; 
+    if (gamePaused || gameWon || player.isEjected) return; // Player can still use keys if Dead (Ghost)
 
-    if (e.code === 'KeyF' && player.isImpostor && !player.inVent) toggleSabotageMap();
-
+    if (e.code === 'KeyF' && player.isImpostor && !player.inVent && !player.isDead) toggleSabotageMap();
     if (player.inVent) {
-        if (e.code === 'KeyA') window.navigateVent(-1);
-        if (e.code === 'KeyD') window.navigateVent(1);
-        if (e.code === 'KeyV') window.doVent();
+        if (e.code === 'KeyA') window.navigateVent(-1); if (e.code === 'KeyD') window.navigateVent(1); if (e.code === 'KeyV') window.doVent();
         return; 
     } 
-    
-    if (e.code === 'KeyV') window.doVent();
-    if (e.code === 'Space') window.doUse();
-    if (e.code === 'KeyE') window.doKill();
-    if (e.code === 'KeyR') window.doReport();
+    if (e.code === 'KeyV' && !player.isDead) window.doVent();
+    if (e.code === 'Space' && !player.isDead) window.doUse();
+    if (e.code === 'KeyE' && !player.isDead) window.doKill();
+    if (e.code === 'KeyR' && !player.isDead) window.doReport();
 });
 
 // --- CHAT & MEETING SYSTEM ---
-function addChatMsg(author, text) {
+function addChatMsg(author, text, isGhost=false) {
+    if (isGhost && !player.isDead && !window.devSeeGhostChat) return; // Only ghosts and devs see ghost chat
+
     const box = document.getElementById('chat-box');
     let msg = document.createElement('div');
     msg.className = 'chat-msg';
@@ -786,41 +666,37 @@ function addChatMsg(author, text) {
     };
     let hex = colorMap[author] || '#ffffff';
     if(author === "SYSTEM") hex = "#0f0";
-
-    msg.innerHTML = `<span class="name" style="color: ${hex}; text-shadow: 1px 1px 2px #000;">${author}:</span> ${text}`;
-    box.appendChild(msg);
-    box.scrollTop = box.scrollHeight; 
+    
+    if (isGhost) {
+        msg.innerHTML = `<span class="name" style="color: #777; font-weight:bold;">[X] ${author}:</span> <span style="color:#aaa;">${text}</span>`;
+    } else {
+        msg.innerHTML = `<span class="name" style="color: ${hex}; text-shadow: 1px 1px 2px #000;">${author}:</span> ${text}`;
+    }
+    box.appendChild(msg); box.scrollTop = box.scrollHeight; 
 }
 
 window.sendPlayerChat = function() {
-    if (player.isDead || player.isEjected) return; 
+    if (player.isEjected) return; 
     const select = document.getElementById('quick-chat-select');
     if (select.value) {
-        addChatMsg(player.colorName, select.value);
+        addChatMsg(player.colorName, select.value, player.isDead);
         
-        if (select.value.includes(" is sus!")) {
+        if (select.value.includes(" is sus!") && !player.isDead) {
             let targetColor = select.value.split(" ")[0];
             if (gaslightCounters[targetColor] !== undefined) {
                 gaslightCounters[targetColor]++;
                 if (gaslightCounters[targetColor] === 10) {
                     gaslightTarget = targetColor;
-                    
                     let aliveBots = bots.filter(b => !b.isDead && !b.isEjected && b.colorName !== targetColor);
                     aliveBots.forEach((b, index) => {
                         setTimeout(() => {
-                            let phrases = [
-                                `Alright fine, voting ${targetColor}.`, 
-                                `You convinced me, ${targetColor} is sus.`, 
-                                `If we lose it's your fault, voting ${targetColor}.`,
-                                `Okay okay, voting ${targetColor}.`
-                            ];
+                            let phrases = [`Alright fine, voting ${targetColor}.`, `You convinced me, ${targetColor} is sus.`, `If we lose it's your fault, voting ${targetColor}.`, `Okay okay, voting ${targetColor}.`];
                             addChatMsg(b.colorName, phrases[Math.floor(Math.random() * phrases.length)]);
                         }, (index * 800) + 500);
                     });
                 }
             }
         }
-        
         select.selectedIndex = 0; 
     }
 }
@@ -829,18 +705,20 @@ function triggerReport(reporter, deadBody) {
     if (gamePaused || gameWon) return; 
     if (player.inVent) player.inVent = false; 
     
-    gamePaused = true; lightsOut = false; visionRadius = 500; 
-    isSabotageMapOpen = false;
+    gamePaused = true; lightsOut = false; visionRadius = 500; isSabotageMapOpen = false;
     document.getElementById('sabotage-layer').style.display = 'none';
     doors.forEach(d => d.isClosed = false); 
 
     let alivePlayers = [player, ...bots].filter(c => !c.isDead && !c.isEjected);
-    let accusedName = "Nobody";
-    let mainAccuser = null;
-
-    gaslightCounters = {};
-    gaslightTarget = null;
+    let deadBots = bots.filter(c => c.isDead && !c.isEjected);
+    
+    let accusedName = "Nobody"; let mainAccuser = null;
+    gaslightCounters = {}; gaslightTarget = null;
     alivePlayers.forEach(p => gaslightCounters[p.colorName] = 0);
+
+    // DISCUSS ANIMATION
+    let dPop = document.getElementById('discuss-popup');
+    dPop.className = ''; void dPop.offsetWidth; dPop.className = 'anim-discuss';
 
     document.getElementById('voting-title').innerText = "Emergency Meeting";
     document.getElementById('chat-box').innerHTML = ''; 
@@ -851,14 +729,12 @@ function triggerReport(reporter, deadBody) {
     accuseGroup.innerHTML = '';
     alivePlayers.forEach(p => {
         if (!p.isPlayer) {
-            let opt = document.createElement('option');
-            opt.value = `${p.colorName} is sus!`;
-            opt.innerText = `${p.colorName} is sus!`;
+            let opt = document.createElement('option'); opt.value = `${p.colorName} is sus!`; opt.innerText = `${p.colorName} is sus!`;
             accuseGroup.appendChild(opt);
         }
     });
 
-    let delay = 1000;
+    let delay = 2000; // wait for discuss anim
     setTimeout(() => { if (!reporter.isPlayer) addChatMsg(reporter.colorName, `Where? I found a body.`); }, delay);
     delay += 1000;
 
@@ -879,8 +755,7 @@ function triggerReport(reporter, deadBody) {
         alivePlayers.forEach(b => {
             if (!b.isPlayer && b !== reporter && Math.random() > 0.4) {
                 let phrases = ["Where?", "Who?", "I didn't see anything.", "skip?", "any proof?", "I was doing tasks."];
-                let phrase = phrases[Math.floor(Math.random() * phrases.length)];
-                setTimeout(() => addChatMsg(b.colorName, phrase), delay);
+                setTimeout(() => addChatMsg(b.colorName, phrases[Math.floor(Math.random() * phrases.length)]), delay);
                 delay += Math.random() * 800 + 400; 
             }
         });
@@ -896,40 +771,49 @@ function triggerReport(reporter, deadBody) {
         });
     }
 
+    // GHOST CHAT RAGE
+    deadBots.forEach(b => {
+        if (b.killer) {
+            setTimeout(() => {
+                let imp = b.killer.colorName;
+                let msgs = [`Stupid ${imp} i hate you, you killed me!`, `bro ${imp} is imp`, `why did ${imp} target me`];
+                addChatMsg(b.colorName, msgs[Math.floor(Math.random()*msgs.length)], true);
+            }, 3000 + Math.random() * 4000);
+        }
+    });
+
     setTimeout(() => {
         const btnContainer = document.getElementById('voting-buttons');
         alivePlayers.forEach(p => {
-            let btn = document.createElement('button');
-            btn.className = 'vote-btn'; btn.innerText = `Vote ${p.colorName}`;
-            btn.style.borderColor = p.colorHex;
-            btn.onclick = () => castVote(p, accusedName, alivePlayers);
+            let btn = document.createElement('button'); btn.className = 'vote-btn'; btn.innerText = `Vote ${p.colorName}`; btn.style.borderColor = p.colorHex;
+            btn.onclick = () => { if(!player.isDead) castVote(p, accusedName, alivePlayers); };
             btnContainer.appendChild(btn);
         });
-        let skipBtn = document.createElement('button');
-        skipBtn.className = 'vote-btn skip-btn'; skipBtn.innerText = "Skip Vote";
-        skipBtn.onclick = () => castVote(null, accusedName, alivePlayers);
+        let skipBtn = document.createElement('button'); skipBtn.className = 'vote-btn skip-btn'; skipBtn.innerText = "Skip Vote";
+        skipBtn.onclick = () => { if(!player.isDead) castVote(null, accusedName, alivePlayers); };
         btnContainer.appendChild(skipBtn);
+        
+        // If player is dead, auto cast vote for bots so meeting progresses
+        if (player.isDead) setTimeout(() => castVote(null, accusedName, alivePlayers, true), 3000);
+
     }, delay);
 }
 
-function castVote(playerChoice, accusedName, alivePlayers) {
+function castVote(playerChoice, accusedName, alivePlayers, autoBotVote = false) {
     let voteLedger = { "Skip": [] };
     alivePlayers.forEach(p => voteLedger[p.colorName] = []);
 
-    let pTarget = playerChoice ? playerChoice.colorName : "Skip";
-    voteLedger[pTarget].push(player);
+    if (!autoBotVote && !player.isDead) {
+        let pTarget = playerChoice ? playerChoice.colorName : "Skip";
+        voteLedger[pTarget].push(player);
+    }
 
     alivePlayers.forEach(p => {
         if (!p.isPlayer) {
             let target = "Skip";
-            
-            if (gaslightTarget && p.colorName !== gaslightTarget) {
-                 target = gaslightTarget;
-            } else if (p.memory.sawKill && p.memory.sawKill.victim === (bots.find(b => b.killer) || {}).colorName) {
-                 target = p.memory.sawKill.killer;
-            } else if (accusedName !== "Nobody" && p.colorName !== accusedName) {
-                 target = accusedName; 
-            }
+            if (gaslightTarget && p.colorName !== gaslightTarget) { target = gaslightTarget; } 
+            else if (p.memory.sawKill && p.memory.sawKill.victim === (bots.find(b => b.killer) || {}).colorName) { target = p.memory.sawKill.killer; } 
+            else if (accusedName !== "Nobody" && p.colorName !== accusedName) { target = accusedName; }
             voteLedger[target].push(p);
         }
     });
@@ -943,37 +827,41 @@ function castVote(playerChoice, accusedName, alivePlayers) {
 
     document.getElementById('voting-buttons').innerHTML = '';
     let resultsHTML = '<h3 style="color:white; text-align:center; margin-bottom:10px;">Voting Results</h3><div style="display:flex; flex-direction:column; gap:8px;">';
-    
     for (let name in voteLedger) {
         if (voteLedger[name].length > 0) {
-            let voterDots = voteLedger[name].map(voter => 
-                `<span style="display:inline-block; width:16px; height:16px; background-color:${voter.colorHex}; border:2px solid #fff; border-radius:50%; margin-left:4px; box-shadow: 0 0 5px rgba(0,0,0,0.5);"></span>`
-            ).join('');
-            
+            let voterDots = voteLedger[name].map(voter => `<span style="display:inline-block; width:16px; height:16px; background-color:${voter.colorHex}; border:2px solid #fff; border-radius:50%; margin-left:4px; box-shadow: 0 0 5px rgba(0,0,0,0.5);"></span>`).join('');
             let targetColor = name === "Skip" ? "#888" : ([player, ...bots].find(c=>c.colorName === name) || {}).colorHex || '#fff';
-            resultsHTML += `
-                <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(0,0,0,0.6); padding:8px 15px; border-radius:8px; border-left: 5px solid ${targetColor};">
-                    <span style="color:${targetColor}; font-weight:bold; font-size:16px; text-shadow: 1px 1px 2px #000;">${name} <span style="font-size:12px; color:#aaa;">(${voteLedger[name].length})</span></span>
-                    <div>${voterDots}</div>
-                </div>
-            `;
+            resultsHTML += `<div style="display:flex; align-items:center; justify-content:space-between; background:rgba(0,0,0,0.6); padding:8px 15px; border-radius:8px; border-left: 5px solid ${targetColor};"><span style="color:${targetColor}; font-weight:bold; font-size:16px; text-shadow: 1px 1px 2px #000;">${name} <span style="font-size:12px; color:#aaa;">(${voteLedger[name].length})</span></span><div>${voterDots}</div></div>`;
         }
     }
     resultsHTML += '</div>';
     document.getElementById('voting-buttons').innerHTML = resultsHTML;
 
-    addChatMsg("SYSTEM", tie || ejectedName === "Skip" ? `Votes tied. Nobody ejected.` : `${ejectedName} was ejected.`);
-
     setTimeout(() => {
         document.getElementById('voting-layer').style.display = 'none';
+        
+        // EJECT SCREEN ANIMATION
+        let isImp = false;
         if (ejectedName && ejectedName !== "Skip" && !tie) {
             let ejectedObj = [player, ...bots].find(p => p.colorName === ejectedName);
-            if (ejectedObj) ejectedObj.isEjected = true;
+            if (ejectedObj) { ejectedObj.isEjected = true; ejectedObj.isDead = true; isImp = ejectedObj.isImpostor; }
         }
-        [player, ...bots].forEach(c => { if (c.isDead) c.isCleanedUp = true; });
         
-        killCooldown = 15; gamePaused = false; checkWinCondition(); 
-    }, 6000);
+        let eText = document.getElementById('eject-text');
+        eText.className = ''; void eText.offsetWidth; eText.className = 'anim-eject';
+        if (tie || ejectedName === "Skip") eText.innerText = "No one was ejected. (Tie/Skip)";
+        else eText.innerText = `${ejectedName} was ${isImp ? '' : 'not '}The Impostor.`;
+        
+        document.getElementById('eject-screen').style.display = 'flex';
+
+        setTimeout(() => {
+            document.getElementById('eject-screen').style.display = 'none';
+            [player, ...bots].forEach(c => { if (c.isDead) c.isCleanedUp = true; });
+            tpToCafe();
+            killCooldown = 15; gamePaused = false; checkWinCondition(); 
+        }, 5000);
+        
+    }, 4000);
 }
 
 function checkWinCondition() {
@@ -988,38 +876,28 @@ function checkWinCondition() {
 
 function triggerEnd(message, color) {
     gameWon = true;
-    document.getElementById('end-text').innerText = message;
-    document.getElementById('end-text').style.color = color;
+    let el = document.getElementById('end-text');
+    el.innerText = message; el.style.color = color;
+    el.className = ''; void el.offsetWidth; // reset anim
     document.getElementById('end-screen').style.display = 'flex';
     setTimeout(() => location.reload(), 4000); 
 }
 
 function drawNavigationArrow() {
-    let targetX = elecPanel.x + elecPanel.w / 2;
-    let targetY = elecPanel.y + elecPanel.h / 2;
-    let playerCenterX = player.x + drawSize / 2;
-    let playerCenterY = player.y + drawSize / 2;
-
+    let targetX = elecPanel.x + elecPanel.w / 2; let targetY = elecPanel.y + elecPanel.h / 2;
+    let playerCenterX = player.x + drawSize / 2; let playerCenterY = player.y + drawSize / 2;
     let angle = Math.atan2(targetY - playerCenterY, targetX - playerCenterX);
     let arrowRadius = drawSize + 30;
-
     let centerX = canvas.width / 2; let centerY = canvas.height / 2;
-    let screenArrowX = centerX + (Math.cos(angle) * arrowRadius);
-    let screenArrowY = centerY + (Math.sin(angle) * arrowRadius);
+    let screenArrowX = centerX + (Math.cos(angle) * arrowRadius); let screenArrowY = centerY + (Math.sin(angle) * arrowRadius);
 
-    ctx.save();
-    ctx.translate(screenArrowX, screenArrowY);
-    ctx.rotate(angle); 
+    ctx.save(); ctx.translate(screenArrowX, screenArrowY); ctx.rotate(angle); 
     ctx.fillStyle = "#ff4747"; ctx.lineWidth = 4; ctx.strokeStyle = "white";
-    ctx.beginPath();
-    ctx.moveTo(0, 0); ctx.lineTo(-20, -10); ctx.lineTo(-20, 10);    
-    ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.restore();
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-20, -10); ctx.lineTo(-20, 10); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
 }
 
 function drawCrate(x, y, size) {
-    ctx.fillStyle = "rgba(0,0,0,0.4)"; ctx.fillRect(x+5, y+5, size, size);
-    ctx.fillStyle = "#8B5A2B"; ctx.fillRect(x, y, size, size);
+    ctx.fillStyle = "rgba(0,0,0,0.4)"; ctx.fillRect(x+5, y+5, size, size); ctx.fillStyle = "#8B5A2B"; ctx.fillRect(x, y, size, size);
     ctx.lineWidth = 4; ctx.strokeStyle = "#5C3A21"; ctx.strokeRect(x+2, y+2, size-4, size-4);
     ctx.beginPath(); ctx.moveTo(x+4, y+4); ctx.lineTo(x+size-4, y+size-4); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(x+size-4, y+4); ctx.lineTo(x+4, y+size-4); ctx.stroke();
@@ -1035,21 +913,15 @@ function gameLoop() {
         if (killCooldown > 0 && !gamePaused && !gameWon) killCooldown--;
         if (globalSabotageCooldown > 0 && !gamePaused && !gameWon) globalSabotageCooldown--;
         if (!gamePaused && !gameWon) {
-            doors.forEach(d => {
-                if (d.closeTimer > 0) {
-                    d.closeTimer--;
-                    if (d.closeTimer === 0) d.isClosed = false; 
-                }
-                if (d.cooldown > 0) d.cooldown--;
-            });
+            doors.forEach(d => { if (d.closeTimer > 0) { d.closeTimer--; if (d.closeTimer === 0) d.isClosed = false; } if (d.cooldown > 0) d.cooldown--; });
         }
         lastTick = now;
     }
 
     let nearPanel = Math.hypot(player.x - (elecPanel.x + elecPanel.w/2), player.y - (elecPanel.y + elecPanel.h/2)) < 150;
-    document.getElementById('use-btn').className = (lightsOut && nearPanel && !gamePaused && !player.inVent) ? 'action-btn active-use' : 'action-btn';
+    document.getElementById('use-btn').className = (lightsOut && nearPanel && !gamePaused && !player.inVent && !player.isDead) ? 'action-btn active-use' : 'action-btn';
 
-    if (player.isImpostor) {
+    if (player.isImpostor && !player.isDead) {
         const killBtn = document.getElementById('kill-btn');
         if (killCooldown > 0) {
             killBtn.className = 'action-btn cooldown'; killBtn.innerText = killCooldown;
@@ -1058,7 +930,6 @@ function gameLoop() {
             killBtn.className = (canKill && !gamePaused && !lightsOut && !player.inVent) ? 'action-btn active-kill' : 'action-btn';
             killBtn.innerText = 'KILL (E)';
         }
-        
         let ventBtn = document.getElementById('vent-btn');
         if (ventBtn) {
             ventBtn.style.display = 'flex';
@@ -1067,38 +938,35 @@ function gameLoop() {
             ventBtn.innerText = player.inVent ? 'EXIT (V)' : 'VENT (V)';
         }
     } else {
-        let ventBtn = document.getElementById('vent-btn');
-        if (ventBtn) ventBtn.style.display = 'none';
+        let ventBtn = document.getElementById('vent-btn'); if (ventBtn) ventBtn.style.display = 'none';
+        let killBtn = document.getElementById('kill-btn'); if (killBtn) killBtn.style.display = 'none';
     }
 
     let canReport = bots.some(b => b.isDead && !b.isCleanedUp && Math.hypot(player.x - b.x, player.y - b.y) < 150);
-    document.getElementById('report-btn').className = (canReport && !gamePaused && !player.inVent) ? 'action-btn active-report' : 'action-btn';
+    document.getElementById('report-btn').className = (canReport && !gamePaused && !player.inVent && !player.isDead) ? 'action-btn active-report' : 'action-btn';
 
     if (isSabotageMapOpen && player.isImpostor) {
         document.getElementById('sabo-lights').className = (globalSabotageCooldown > 0 || lightsOut) ? 'sabo-icon lights-icon cooldown' : 'sabo-icon lights-icon';
         doors.forEach(d => {
             let dBtn = document.getElementById('sabo-' + d.id);
-            if (dBtn) {
-                dBtn.className = (d.cooldown > 0 || d.isClosed) ? 'sabo-icon door-icon cooldown' : 'sabo-icon door-icon';
-                dBtn.innerText = d.isClosed ? 'X' : '🚪';
-            }
+            if (dBtn) { dBtn.className = (d.cooldown > 0 || d.isClosed) ? 'sabo-icon door-icon cooldown' : 'sabo-icon door-icon'; dBtn.innerText = d.isClosed ? 'X' : '🚪'; }
         });
     }
 
     if (!gamePaused && !gameWon && !lightsOut && !player.inVent) {
         bots.forEach(bot => {
             if (!bot.isDead && !bot.isEjected && !bot.inVent) {
-                bots.filter(c => c.isDead && !c.isCleanedUp).forEach(body => {
-                    if (Math.hypot(bot.x - body.x, bot.y - body.y) < 150) triggerReport(bot, body);
-                });
+                bots.filter(c => c.isDead && !c.isCleanedUp).forEach(body => { if (Math.hypot(bot.x - body.x, bot.y - body.y) < 150) triggerReport(bot, body); });
             }
         });
     }
     
     const ventUIEl = document.getElementById('vent-ui');
-    if (ventUIEl) {
-        ventUIEl.style.display = (player.inVent && !gamePaused && !gameWon) ? 'flex' : 'none';
-    }
+    if (ventUIEl) ventUIEl.style.display = (player.inVent && !gamePaused && !gameWon && !player.isDead) ? 'flex' : 'none';
+
+    // Show Death Status
+    let killLayer = document.getElementById('kill-status');
+    if (killLayer) killLayer.style.opacity = player.isDead ? 1 : 0;
 
     ctx.save();
     let camX = canvas.width / 2 - player.x - drawSize / 2;
@@ -1108,12 +976,8 @@ function gameLoop() {
     ctx.fillStyle = "#2a2a2a"; ctx.fillRect(0, 0, WORLD_W, WORLD_H);
     
     // 1. Reactor Core Room
-    ctx.fillStyle = "#1e293b"; ctx.beginPath(); ctx.arc(250, 300, 130, 0, Math.PI*2); ctx.fill();
-    ctx.lineWidth = 2; ctx.strokeStyle = "#334155";
-    for(let i=130; i<=370; i+=25) { 
-        ctx.beginPath(); ctx.moveTo(i, 170); ctx.lineTo(i, 430); ctx.stroke(); 
-        ctx.beginPath(); ctx.moveTo(130, i-130+170); ctx.lineTo(370, i-130+170); ctx.stroke(); 
-    }
+    ctx.fillStyle = "#1e293b"; ctx.beginPath(); ctx.arc(250, 300, 130, 0, Math.PI*2); ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = "#334155";
+    for(let i=130; i<=370; i+=25) { ctx.beginPath(); ctx.moveTo(i, 170); ctx.lineTo(i, 430); ctx.stroke(); ctx.beginPath(); ctx.moveTo(130, i-130+170); ctx.lineTo(370, i-130+170); ctx.stroke(); }
     let radGrad = ctx.createRadialGradient(250, 300, 5, 250, 300, 95);
     radGrad.addColorStop(0, "#ffffff"); radGrad.addColorStop(0.25, "#38bdf8"); radGrad.addColorStop(0.8, "rgba(2, 132, 199, 0.2)"); radGrad.addColorStop(1, "rgba(0,0,0,0)");
     ctx.fillStyle = radGrad; ctx.beginPath(); ctx.arc(250, 300, 95, 0, Math.PI*2); ctx.fill();
@@ -1121,80 +985,41 @@ function gameLoop() {
     ctx.fillStyle = "#64748b"; ctx.fillRect(242, 170, 16, 45); ctx.fillRect(242, 385, 16, 45); ctx.fillRect(130, 292, 45, 16); ctx.fillRect(325, 292, 45, 16);
 
     // 2. Admin Command Room
-    ctx.fillStyle = "#1e293b"; ctx.fillRect(1130, 480, 290, 160);
-    ctx.fillStyle = "#0f172a"; ctx.fillRect(1145, 495, 260, 130);
-    ctx.strokeStyle = "#334155"; ctx.lineWidth = 6; ctx.strokeRect(1145, 495, 260, 130);
-    let holoBase = ctx.createRadialGradient(1275, 560, 5, 1275, 560, 75);
-    holoBase.addColorStop(0, "rgba(34, 197, 94, 0.45)"); holoBase.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = holoBase; ctx.fillRect(1150, 500, 250, 120);
-    let t = Date.now() / 800;
-    ctx.strokeStyle = "rgba(74, 222, 128, 0.6)"; ctx.lineWidth = 3;
-    if(ctx.ellipse) {
-        ctx.beginPath(); ctx.ellipse(1275, 560, 90 + Math.sin(t)*8, 45 + Math.sin(t)*4, 0, 0, Math.PI*2); ctx.stroke();
-        ctx.beginPath(); ctx.ellipse(1275, 560, 45 - Math.cos(t)*6, 22 - Math.cos(t)*3, 0, 0, Math.PI*2); ctx.stroke();
-    }
+    ctx.fillStyle = "#1e293b"; ctx.fillRect(1130, 480, 290, 160); ctx.fillStyle = "#0f172a"; ctx.fillRect(1145, 495, 260, 130); ctx.strokeStyle = "#334155"; ctx.lineWidth = 6; ctx.strokeRect(1145, 495, 260, 130);
+    let holoBase = ctx.createRadialGradient(1275, 560, 5, 1275, 560, 75); holoBase.addColorStop(0, "rgba(34, 197, 94, 0.45)"); holoBase.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = holoBase; ctx.fillRect(1150, 500, 250, 120); let t = Date.now() / 800; ctx.strokeStyle = "rgba(74, 222, 128, 0.6)"; ctx.lineWidth = 3;
+    if(ctx.ellipse) { ctx.beginPath(); ctx.ellipse(1275, 560, 90 + Math.sin(t)*8, 45 + Math.sin(t)*4, 0, 0, Math.PI*2); ctx.stroke(); ctx.beginPath(); ctx.ellipse(1275, 560, 45 - Math.cos(t)*6, 22 - Math.cos(t)*3, 0, 0, Math.PI*2); ctx.stroke(); }
 
     // 3. Storage Supply Room
-    drawCrate(840, 1310, 75);
-    drawCrate(930, 1280, 95);
-    drawCrate(885, 1375, 85);
+    drawCrate(840, 1310, 75); drawCrate(930, 1280, 95); drawCrate(885, 1375, 85);
 
     // 4. Electrical Control Room
-    ctx.save();
-    ctx.beginPath(); ctx.rect(850, 250, 200, 20); ctx.clip();
-    ctx.fillStyle = "#eab308"; ctx.fillRect(850, 250, 200, 20);
-    ctx.fillStyle = "#0f172a";
-    for(let i=-30; i<250; i+=35) {
-        ctx.beginPath(); ctx.moveTo(850+i, 250); ctx.lineTo(850+i+20, 250); ctx.lineTo(850+i+5, 270); ctx.lineTo(850+i-15, 270); ctx.fill();
-    }
-    ctx.restore();
-    ctx.fillStyle = "#334155"; ctx.fillRect(810, 50, 75, 165); 
-    ctx.fillStyle = "#1e293b"; ctx.fillRect(815, 55, 65, 155); 
-    ctx.fillStyle = "#020617"; ctx.fillRect(822, 65, 51, 40); ctx.fillRect(822, 115, 51, 85); 
+    ctx.save(); ctx.beginPath(); ctx.rect(850, 250, 200, 20); ctx.clip(); ctx.fillStyle = "#eab308"; ctx.fillRect(850, 250, 200, 20); ctx.fillStyle = "#0f172a";
+    for(let i=-30; i<250; i+=35) { ctx.beginPath(); ctx.moveTo(850+i, 250); ctx.lineTo(850+i+20, 250); ctx.lineTo(850+i+5, 270); ctx.lineTo(850+i-15, 270); ctx.fill(); }
+    ctx.restore(); ctx.fillStyle = "#334155"; ctx.fillRect(810, 50, 75, 165); ctx.fillStyle = "#1e293b"; ctx.fillRect(815, 55, 65, 155); ctx.fillStyle = "#020617"; ctx.fillRect(822, 65, 51, 40); ctx.fillRect(822, 115, 51, 85); 
     ctx.fillStyle = (Math.floor(Date.now()/400) % 2 === 0) ? "#ef4444" : "#7f1d1d"; ctx.beginPath(); ctx.arc(832, 75, 4, 0, Math.PI*2); ctx.fill();
     ctx.fillStyle = (Math.floor(Date.now()/250) % 2 === 0) ? "#22c55e" : "#14532d"; ctx.beginPath(); ctx.arc(847, 75, 4, 0, Math.PI*2); ctx.fill();
     ctx.fillStyle = (Math.floor(Date.now()/600) % 2 === 0) ? "#3b82f6" : "#1e3a8a"; ctx.beginPath(); ctx.arc(862, 75, 4, 0, Math.PI*2); ctx.fill();
 
+    // 5. Cafeteria (Center)
+    ctx.fillStyle = "#111"; ctx.beginPath(); ctx.arc(1000, 750, 80, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = "#444"; ctx.lineWidth = 10; ctx.beginPath(); ctx.arc(1000, 750, 80, 0, Math.PI*2); ctx.stroke();
+    ctx.fillStyle = "#ff4747"; ctx.beginPath(); ctx.arc(1000, 750, 20, 0, Math.PI*2); ctx.fill(); // Emergency Button
+
     // Vents
-    ctx.fillStyle = "#475569";
-    ctx.strokeStyle = "#0f172a";
-    ctx.lineWidth = 4;
-    vents.forEach(v => {
-        ctx.fillRect(v.x - 30, v.y - 30, 60, 60);
-        ctx.strokeRect(v.x - 30, v.y - 30, 60, 60);
-        ctx.beginPath();
-        for(let i = -15; i <= 15; i += 10) {
-            ctx.moveTo(v.x - 21, v.y + i);
-            ctx.lineTo(v.x + 21, v.y + i);
-        }
-        ctx.stroke();
-    });
+    ctx.fillStyle = "#475569"; ctx.strokeStyle = "#0f172a"; ctx.lineWidth = 4;
+    vents.forEach(v => { ctx.fillRect(v.x - 30, v.y - 30, 60, 60); ctx.strokeRect(v.x - 30, v.y - 30, 60, 60); ctx.beginPath(); for(let i = -15; i <= 15; i += 10) { ctx.moveTo(v.x - 21, v.y + i); ctx.lineTo(v.x + 21, v.y + i); } ctx.stroke(); });
 
     ctx.fillStyle = "#4a5a6a"; walls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
+    doors.forEach(d => { if (d.isClosed) { ctx.fillStyle = "#b53a3a"; ctx.fillRect(d.x, d.y, d.w, d.h); ctx.strokeStyle = "#111"; ctx.lineWidth = 5; ctx.strokeRect(d.x, d.y, d.w, d.h); ctx.beginPath(); if (d.w > d.h) { ctx.moveTo(d.x + d.w/2, d.y); ctx.lineTo(d.x + d.w/2, d.y + d.h) } else { ctx.moveTo(d.x, d.y + d.h/2); ctx.lineTo(d.x + d.w, d.y + d.h/2); } ctx.stroke(); } });
 
-    doors.forEach(d => {
-        if (d.isClosed) {
-            ctx.fillStyle = "#b53a3a"; ctx.fillRect(d.x, d.y, d.w, d.h);
-            ctx.strokeStyle = "#111"; ctx.lineWidth = 5; ctx.strokeRect(d.x, d.y, d.w, d.h);
-            ctx.beginPath();
-            if (d.w > d.h) { ctx.moveTo(d.x + d.w/2, d.y); ctx.lineTo(d.x + d.w/2, d.y + d.h) } 
-            else { ctx.moveTo(d.x, d.y + d.h/2); ctx.lineTo(d.x + d.w, d.y + d.h/2); }
-            ctx.stroke();
-        }
-    });
-
-    ctx.fillStyle = lightsOut ? "#ef4444" : "#475569"; 
-    ctx.fillRect(elecPanel.x, elecPanel.y, elecPanel.w, elecPanel.h);
-    ctx.fillStyle = "white"; ctx.font = "bold 20px 'Varela Round'"; ctx.textAlign = "center";
-    ctx.fillText("⚡", elecPanel.x + elecPanel.w/2, elecPanel.y + elecPanel.h/2 + 7);
-    if (lightsOut) {
-        ctx.fillStyle = "rgba(239, 68, 68, 0.45)";
-        ctx.beginPath(); ctx.arc(elecPanel.x + elecPanel.w/2, elecPanel.y - 20, 15 + Math.sin(Date.now()/150)*6, 0, Math.PI*2); ctx.fill();
-    }
+    ctx.fillStyle = lightsOut ? "#ef4444" : "#475569"; ctx.fillRect(elecPanel.x, elecPanel.y, elecPanel.w, elecPanel.h);
+    ctx.fillStyle = "white"; ctx.font = "bold 20px 'Varela Round'"; ctx.textAlign = "center"; ctx.fillText("⚡", elecPanel.x + elecPanel.w/2, elecPanel.y + elecPanel.h/2 + 7);
+    if (lightsOut) { ctx.fillStyle = "rgba(239, 68, 68, 0.45)"; ctx.beginPath(); ctx.arc(elecPanel.x + elecPanel.w/2, elecPanel.y - 20, 15 + Math.sin(Date.now()/150)*6, 0, Math.PI*2); ctx.fill(); }
 
     let allEntities = [...bots, player];
-    allEntities.forEach(e => { if (e.isDead) { e.update(); e.draw(ctx); } });
-    allEntities.forEach(e => { if (!e.isDead) { e.update(); e.draw(ctx); } });
+    allEntities.forEach(e => { if (e.isDead && e.isCleanedUp) { e.update(); e.draw(ctx); } }); // Draw ghosts/bodies first
+    allEntities.forEach(e => { if (!(e.isDead && e.isCleanedUp)) { e.update(); e.draw(ctx); } });
 
     ctx.restore();
 
@@ -1204,7 +1029,7 @@ function gameLoop() {
         ctx.fillStyle = grad; ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
-    if (lightsOut && !gamePaused && !gameWon && !player.inVent) drawNavigationArrow();
+    if (lightsOut && !gamePaused && !gameWon && !player.inVent && !player.isDead) drawNavigationArrow();
 
     requestAnimationFrame(gameLoop);
 }
