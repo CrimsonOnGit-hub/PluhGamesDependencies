@@ -17,27 +17,23 @@ window.globalBotSpeed = 3.5;
 window.devSeeGhosts = false;
 window.devSeeGhostChat = false;
 
-// --- DYNAMIC UI INJECTION (Tablet, Animations, Eject Screen, Discuss) ---
+// --- DYNAMIC UI INJECTION (Tablet, Animations, Admin, Discuss) ---
 const customStyles = document.createElement('style');
 customStyles.innerHTML = `
     .vent-arrow { background: none; border: none; color: rgba(255,255,255,0.5); font-size: 80px; cursor: pointer; text-shadow: 0 0 15px #000; pointer-events: auto; transition: transform 0.1s, color 0.1s; padding: 0 40px; }
     .vent-arrow:hover { color: rgba(255,255,255,1); transform: scale(1.2); }
     .vent-arrow:active { transform: scale(0.9); }
     
-    /* Tablet Meeting UI */
     #voting-content { border: 20px solid #111; border-radius: 35px; box-shadow: 0 0 50px rgba(0,0,0,0.9), inset 0 0 10px rgba(255,255,255,0.1); position: relative; }
     #voting-content::before { content: ''; position: absolute; top: -15px; left: 50%; transform: translateX(-50%); width: 10px; height: 10px; background: #333; border-radius: 50%; box-shadow: inset 0 0 2px #000; }
     
-    /* End Screen Animation */
     #end-text { animation: popBounce 1s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
     @keyframes popBounce { 0% { transform: scale(0); opacity: 0; } 50% { transform: scale(1.1); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
     
-    /* Discuss Animation */
     #discuss-popup { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 150px; font-weight: bold; font-family: 'Varela Round'; color: #ff4747; text-shadow: 0 0 30px #000, 4px 4px 0 #fff; z-index: 2000; pointer-events: none; opacity: 0; }
     .anim-discuss { animation: discussSlam 2s forwards; }
     @keyframes discussSlam { 0% { transform: translate(-50%, -50%) scale(3); opacity: 0; } 15% { transform: translate(-50%, -50%) scale(1); opacity: 1; } 80% { transform: translate(-50%, -50%) scale(0.8); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; } }
 
-    /* Eject Screen */
     #eject-screen { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 1500; align-items: center; justify-content: center; overflow: hidden; font-family: 'Varela Round'; }
     #eject-text { color: #fff; font-size: 40px; font-weight: bold; white-space: nowrap; }
     .anim-eject { animation: driftSpace 5s linear forwards; }
@@ -60,6 +56,32 @@ const ejectScreen = document.createElement('div');
 ejectScreen.id = 'eject-screen';
 ejectScreen.innerHTML = `<div id="eject-text"></div>`;
 document.body.appendChild(ejectScreen);
+
+// --- ADMIN MAP INJECTION ---
+const adminLayer = document.createElement('div');
+adminLayer.id = 'admin-layer';
+adminLayer.className = 'full-layer';
+adminLayer.innerHTML = `
+    <div style="position: relative; width: 800px; height: 600px; background: #111; border: 20px solid #222; border-radius: 35px; overflow: hidden; box-shadow: 0 0 50px rgba(0,0,0,0.9);">
+        <button style="position:absolute; top:15px; right:15px; background:rgba(0,0,0,0.8); border:2px solid #fff; color:#fff; font-family:'Varela Round'; font-weight:bold; cursor:pointer; z-index:100; padding: 5px 15px; border-radius: 5px;" onclick="closeAdmin()">X</button>
+        <h3 style="color:#2ecc71; text-align:center; margin:15px 0; font-family:'Varela Round'; text-transform:uppercase; letter-spacing: 2px;">Admin Map Tracking</h3>
+        <canvas id="admin-canvas" width="800" height="600" style="position: absolute; top: 0; left: 0; pointer-events: none;"></canvas>
+    </div>
+`;
+document.body.appendChild(adminLayer);
+
+let adminMapOpen = false;
+window.openAdmin = function() {
+    if (player.isDead) return;
+    adminMapOpen = true;
+    gamePaused = true;
+    document.getElementById('admin-layer').style.display = 'flex';
+}
+window.closeAdmin = function() {
+    adminMapOpen = false;
+    gamePaused = false;
+    document.getElementById('admin-layer').style.display = 'none';
+}
 
 document.getElementById('vent-left').onclick = () => window.navigateVent(-1);
 document.getElementById('vent-right').onclick = () => window.navigateVent(1);
@@ -119,6 +141,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
 let killCooldown = 15; 
 let globalSabotageCooldown = 0; 
+let meetingCooldown = 15; 
 let lastTick = Date.now();
 let lightsOut = false;
 let visionRadius = 500; 
@@ -153,7 +176,6 @@ const vents = [
     { x: 200, y: 250 }, { x: 950, y: 200 }, { x: 1300, y: 650 }, { x: 200, y: 1200 }   
 ];
 
-// Added Node 13 for Cafeteria Center (1000, 750)
 const waypoints = [
     { id: 0, x: 170, y: 270, edges: [2] },         
     { id: 1, x: 170, y: 1170, edges: [2] },        
@@ -167,7 +189,7 @@ const waypoints = [
     { id: 10, x: 920, y: 1070, edges: [6, 11] },   
     { id: 11, x: 970, y: 1270, edges: [10] },     
     { id: 12, x: 920, y: 350, edges: [5, 6] },
-    { id: 13, x: 1000, y: 750, edges: [6, 7] } // Cafeteria Center
+    { id: 13, x: 1000, y: 750, edges: [6, 7] } 
 ];
 
 function checkCollision(nx, ny, size) {
@@ -252,16 +274,14 @@ function tpToCafe() {
     alive.forEach((c, i) => {
         c.x = 1000 + Math.cos(angleStep * i) * radius;
         c.y = 750 + Math.sin(angleStep * i) * radius;
-        c.targetNode = null;
-        c.path = [];
-        c.inVent = false;
-        c.isMoving = false;
+        c.targetNode = null; c.path = []; c.inVent = false; c.isMoving = false;
     });
     
-    // Auto-center camera for player
     if (!player.isDead) {
         player.x = 1000 + Math.cos(0) * radius;
         player.y = 750 + Math.sin(0) * radius;
+    } else {
+        player.x = 1000; player.y = 750; // Dead player in center
     }
 }
 
@@ -301,28 +321,21 @@ class Crewmate {
             return; 
         }
 
-        // --- GHOST FREE ROAM MECHANICS ---
         if (this.isDead) {
-            this.speed = (this.isPlayer ? window.globalPlayerSpeed : window.globalBotSpeed) * 1.5; // Ghosts are fast
+            this.speed = (this.isPlayer ? window.globalPlayerSpeed : window.globalBotSpeed) * 1.5; 
             if (this.isPlayer) {
-                let nx = this.x; let ny = this.y;
-                let moved = false;
+                let nx = this.x; let ny = this.y; let moved = false;
                 if (keys['KeyW']) { ny -= this.speed; moved = true; }
                 if (keys['KeyS']) { ny += this.speed; moved = true; }
                 if (keys['KeyA']) { nx -= this.speed; moved = true; this.lastDir = 'left'; }
                 if (keys['KeyD']) { nx += this.speed; moved = true; this.lastDir = 'right'; }
-                if (moved) { this.x = nx; this.y = ny; this.isMoving = true; } 
-                else { this.isMoving = false; }
+                if (moved) { this.x = nx; this.y = ny; this.isMoving = true; } else { this.isMoving = false; }
             } else {
-                // Bots wander aimlessly ignoring walls
-                this.x += (Math.random() - 0.5) * this.speed;
-                this.y += (Math.random() - 0.5) * this.speed;
-                // Keep ghosts in bounds
-                this.x = Math.max(0, Math.min(WORLD_W, this.x));
-                this.y = Math.max(0, Math.min(WORLD_H, this.y));
+                this.x += (Math.random() - 0.5) * this.speed; this.y += (Math.random() - 0.5) * this.speed;
+                this.x = Math.max(0, Math.min(WORLD_W, this.x)); this.y = Math.max(0, Math.min(WORLD_H, this.y));
                 this.isMoving = true;
             }
-            return; // Skip living logic
+            return; 
         }
         
         if (this.inVent) {
@@ -469,16 +482,14 @@ class Crewmate {
         
         if (this.inVent) ctx.globalAlpha = 0.4;
         
-        // --- DRAW GHOST IF DEAD ---
         if (this.isDead && this.isCleanedUp) {
-            if (!player.isDead && !window.devSeeGhosts) { ctx.restore(); return; } // Invisible to alive players unless dev mode
+            if (!player.isDead && !window.devSeeGhosts) { ctx.restore(); return; } 
             ctx.globalAlpha = 0.5;
             if (this.lastDir === 'left') ctx.scale(-1, 1);
             let bob = Math.sin(Date.now() / 200) * 5;
             ctx.drawImage(this.tintedGhost || ghostImg, -drawSize/2, -drawSize/2 + bob, drawSize, drawSize);
             ctx.restore();
             
-            // Ghost Name
             ctx.fillStyle = this.colorHex; ctx.font = "14px 'Varela Round'"; ctx.textAlign = "center";
             ctx.strokeStyle = "rgba(0,0,0,0.5)"; ctx.lineWidth = 3;
             ctx.strokeText("👻 " + this.colorName, this.x + drawSize/2, this.y - 15);
@@ -486,7 +497,6 @@ class Crewmate {
             return;
         }
         
-        // --- NORMAL ALIVE/BODY DRAW ---
         if (this.lastDir === 'left') ctx.scale(-1, 1);
         
         let currentImg = this.tintedStand || standImg;
@@ -561,7 +571,7 @@ window.triggerSabotage = function(type) {
 }
 
 window.openLightsTask = function() {
-    if (player.inVent) return;
+    if (player.inVent || player.isDead) return;
     gamePaused = true; switchStates = [false, false, false, false, false];
     document.querySelectorAll('.switch').forEach(s => s.className = 'switch off');
     document.getElementById('task-layer').style.display = 'flex';
@@ -577,14 +587,38 @@ window.toggleSwitch = function(el) {
     if (switchStates.every(s => s === true)) setTimeout(() => { lightsOut = false; visionRadius = 500; closeTask(); }, 500);
 }
 
+// DRAW ADMIN LIVE MAP LOOP
+function drawAdminMap() {
+    let aCanvas = document.getElementById('admin-canvas');
+    if (!aCanvas || !adminMapOpen) return;
+    let aCtx = aCanvas.getContext('2d');
+    aCtx.clearRect(0, 0, aCanvas.width, aCanvas.height);
+    
+    let scaleX = 800 / WORLD_W; let scaleY = 600 / WORLD_H;
+    
+    aCtx.fillStyle = "#4a5a6a";
+    walls.forEach(w => aCtx.fillRect(w.x * scaleX, w.y * scaleY, w.w * scaleX, w.h * scaleY));
+    
+    let alive = [player, ...bots].filter(c => !c.isDead && !c.isEjected);
+    alive.forEach(c => {
+        aCtx.fillStyle = "#2ecc71";
+        aCtx.beginPath(); aCtx.arc(c.x * scaleX, c.y * scaleY, 6, 0, Math.PI*2); aCtx.fill();
+    });
+}
+
 window.doUse = () => { 
     if(gamePaused || player.isDead || player.inVent) return;
     let nearPanel = Math.hypot(player.x - (elecPanel.x + 50), player.y - (elecPanel.y + 30)) < 150;
-    if(lightsOut && nearPanel) openLightsTask();
+    let nearCafe = Math.hypot(player.x - 1000, player.y - 750) < 150;
+    let nearAdmin = Math.hypot(player.x - 1275, player.y - 560) < 150;
+    
+    if (lightsOut && nearPanel) openLightsTask();
+    else if (nearCafe && meetingCooldown <= 0) triggerReport(player, null, true);
+    else if (nearAdmin) openAdmin();
 };
 
 window.doVent = () => {
-    if(!player.isImpostor || lightsOut) return;
+    if(!player.isImpostor || lightsOut || player.isDead) return;
     if(player.inVent) { player.inVent = false; } 
     else {
         let nearest = vents.findIndex(v => Math.hypot(player.x - v.x, player.y - v.y) < 100);
@@ -597,13 +631,13 @@ window.doVent = () => {
 };
 
 window.navigateVent = (dir) => {
-    if(!player.inVent) return;
+    if(!player.inVent || player.isDead) return;
     player.currentVent = (player.currentVent + dir + vents.length) % vents.length;
     player.ventTargetX = vents[player.currentVent].x; player.ventTargetY = vents[player.currentVent].y;
 };
 
 window.doKill = () => {
-    if(!player.isImpostor || killCooldown > 0 || player.inVent || gamePaused || lightsOut || isSabotageMapOpen) return;
+    if(!player.isImpostor || killCooldown > 0 || player.inVent || gamePaused || lightsOut || isSabotageMapOpen || player.isDead) return;
     for (let bot of bots) {
         if (!bot.isDead && !bot.isEjected && !bot.inVent && Math.hypot(bot.x - player.x, bot.y - player.y) < 90) { 
             bot.isDead = true; bot.killer = player; killCooldown = 20; 
@@ -619,9 +653,9 @@ window.doKill = () => {
 };
 
 window.doReport = () => {
-    if(gamePaused || isSabotageMapOpen) return;
+    if(gamePaused || isSabotageMapOpen || player.isDead) return;
     let bodies = bots.filter(c => c.isDead && !c.isCleanedUp);
-    for (let b of bodies) { if (Math.hypot(player.x - b.x, player.y - b.y) < 150) { triggerReport(player, b); break; } }
+    for (let b of bodies) { if (Math.hypot(player.x - b.x, player.y - b.y) < 150) { triggerReport(player, b, false); break; } }
 };
 
 document.getElementById('use-btn').onclick = window.doUse;
@@ -639,26 +673,25 @@ window.addEventListener('keydown', (e) => {
             const dm = document.getElementById('dev-menu'); dm.style.display = (dm.style.display === 'none') ? 'block' : 'none'; secretBuffer = ''; 
         }
     }
-    if (gamePaused || gameWon || player.isEjected) return; // Player can still use keys if Dead (Ghost)
+    if (gamePaused || gameWon || player.isEjected) return;
 
     if (e.code === 'KeyF' && player.isImpostor && !player.inVent && !player.isDead) toggleSabotageMap();
-    if (player.inVent) {
+    if (player.inVent && !player.isDead) {
         if (e.code === 'KeyA') window.navigateVent(-1); if (e.code === 'KeyD') window.navigateVent(1); if (e.code === 'KeyV') window.doVent();
         return; 
     } 
     if (e.code === 'KeyV' && !player.isDead) window.doVent();
-    if (e.code === 'Space' && !player.isDead) window.doUse();
+    if (e.code === 'Space') window.doUse(); // ghosts can't use but logic blocked inside
     if (e.code === 'KeyE' && !player.isDead) window.doKill();
     if (e.code === 'KeyR' && !player.isDead) window.doReport();
 });
 
 // --- CHAT & MEETING SYSTEM ---
 function addChatMsg(author, text, isGhost=false) {
-    if (isGhost && !player.isDead && !window.devSeeGhostChat) return; // Only ghosts and devs see ghost chat
+    if (isGhost && !player.isDead && !window.devSeeGhostChat) return;
 
     const box = document.getElementById('chat-box');
-    let msg = document.createElement('div');
-    msg.className = 'chat-msg';
+    let msg = document.createElement('div'); msg.className = 'chat-msg';
     
     const colorMap = {
         'Red': '#ff4747', 'Blue': '#2572ff', 'Green': '#32cd32', 'Yellow': '#ffd700',
@@ -701,12 +734,13 @@ window.sendPlayerChat = function() {
     }
 }
 
-function triggerReport(reporter, deadBody) {
+function triggerReport(reporter, deadBody, isEmergency = false) {
     if (gamePaused || gameWon) return; 
     if (player.inVent) player.inVent = false; 
     
-    gamePaused = true; lightsOut = false; visionRadius = 500; isSabotageMapOpen = false;
+    gamePaused = true; lightsOut = false; visionRadius = 500; isSabotageMapOpen = false; adminMapOpen = false;
     document.getElementById('sabotage-layer').style.display = 'none';
+    document.getElementById('admin-layer').style.display = 'none';
     doors.forEach(d => d.isClosed = false); 
 
     let alivePlayers = [player, ...bots].filter(c => !c.isDead && !c.isEjected);
@@ -716,37 +750,27 @@ function triggerReport(reporter, deadBody) {
     gaslightCounters = {}; gaslightTarget = null;
     alivePlayers.forEach(p => gaslightCounters[p.colorName] = 0);
 
-    // DISCUSS ANIMATION
     let dPop = document.getElementById('discuss-popup');
     dPop.className = ''; void dPop.offsetWidth; dPop.className = 'anim-discuss';
 
-    document.getElementById('voting-title').innerText = "Emergency Meeting";
-    document.getElementById('chat-box').innerHTML = ''; 
-    document.getElementById('voting-buttons').innerHTML = ''; 
+    document.getElementById('voting-title').innerText = isEmergency ? "EMERGENCY MEETING CALLED" : "DEAD BODY REPORTED";
+    document.getElementById('chat-box').innerHTML = ''; document.getElementById('voting-buttons').innerHTML = ''; 
     document.getElementById('voting-layer').style.display = 'flex'; 
 
-    const accuseGroup = document.getElementById('qc-accuse');
-    accuseGroup.innerHTML = '';
+    const accuseGroup = document.getElementById('qc-accuse'); accuseGroup.innerHTML = '';
     alivePlayers.forEach(p => {
-        if (!p.isPlayer) {
-            let opt = document.createElement('option'); opt.value = `${p.colorName} is sus!`; opt.innerText = `${p.colorName} is sus!`;
-            accuseGroup.appendChild(opt);
-        }
+        if (!p.isPlayer) { let opt = document.createElement('option'); opt.value = `${p.colorName} is sus!`; opt.innerText = `${p.colorName} is sus!`; accuseGroup.appendChild(opt); }
     });
 
-    let delay = 2000; // wait for discuss anim
-    setTimeout(() => { if (!reporter.isPlayer) addChatMsg(reporter.colorName, `Where? I found a body.`); }, delay);
-    delay += 1000;
+    let delay = 2000; 
+    if (!isEmergency && !reporter.isPlayer) { setTimeout(() => addChatMsg(reporter.colorName, `Where? I found a body.`), delay); delay += 1000; }
+    else if (isEmergency && !reporter.isPlayer) { setTimeout(() => addChatMsg(reporter.colorName, `I have information.`), delay); delay += 1000; }
 
     alivePlayers.forEach(b => {
-        if (!b.isPlayer && b.memory.sawKill && b.memory.sawKill.victim === deadBody.colorName) {
+        if (!b.isPlayer && b.memory.sawKill && (!isEmergency || b.memory.sawKill.time > Date.now() - 30000)) {
             accusedName = b.memory.sawKill.killer;
-            if (!mainAccuser) {
-                mainAccuser = b.colorName;
-                setTimeout(() => { addChatMsg(b.colorName, `${accusedName} killed ${deadBody.colorName} in front of me!`); }, delay);
-            } else {
-                setTimeout(() => { addChatMsg(b.colorName, `Yeah, I literally saw ${accusedName} kill them!`); }, delay);
-            }
+            if (!mainAccuser) { mainAccuser = b.colorName; setTimeout(() => { addChatMsg(b.colorName, `${accusedName} killed ${b.memory.sawKill.victim} in front of me!`); }, delay); } 
+            else { setTimeout(() => { addChatMsg(b.colorName, `Yeah, I literally saw ${accusedName} kill them!`); }, delay); }
             delay += 1000;
         }
     });
@@ -754,29 +778,22 @@ function triggerReport(reporter, deadBody) {
     if (!mainAccuser) {
         alivePlayers.forEach(b => {
             if (!b.isPlayer && b !== reporter && Math.random() > 0.4) {
-                let phrases = ["Where?", "Who?", "I didn't see anything.", "skip?", "any proof?", "I was doing tasks."];
-                setTimeout(() => addChatMsg(b.colorName, phrases[Math.floor(Math.random() * phrases.length)]), delay);
-                delay += Math.random() * 800 + 400; 
+                let phrases = isEmergency ? ["Why the button?", "Who called it?", "Any sus?", "What's going on?", "skip?"] : ["Where?", "Who?", "I didn't see anything.", "skip?", "any proof?", "I was doing tasks."];
+                setTimeout(() => addChatMsg(b.colorName, phrases[Math.floor(Math.random() * phrases.length)]), delay); delay += Math.random() * 800 + 400; 
             }
         });
     } else {
         alivePlayers.forEach(b => {
-            if (!b.isPlayer && b.colorName !== mainAccuser && b.colorName !== accusedName && (!b.memory.sawKill || b.memory.sawKill.victim !== deadBody.colorName) && Math.random() > 0.4) {
-                setTimeout(() => {
-                    let phrases = [`Voting ${accusedName}.`, `If you say so, ${mainAccuser}.`, `Okay, voting ${accusedName}.`];
-                    addChatMsg(b.colorName, phrases[Math.floor(Math.random() * phrases.length)]);
-                }, delay);
-                delay += 800;
+            if (!b.isPlayer && b.colorName !== mainAccuser && b.colorName !== accusedName && !b.memory.sawKill && Math.random() > 0.4) {
+                setTimeout(() => { let phrases = [`Voting ${accusedName}.`, `If you say so, ${mainAccuser}.`, `Okay, voting ${accusedName}.`]; addChatMsg(b.colorName, phrases[Math.floor(Math.random() * phrases.length)]); }, delay); delay += 800;
             }
         });
     }
 
-    // GHOST CHAT RAGE
     deadBots.forEach(b => {
         if (b.killer) {
             setTimeout(() => {
-                let imp = b.killer.colorName;
-                let msgs = [`Stupid ${imp} i hate you, you killed me!`, `bro ${imp} is imp`, `why did ${imp} target me`];
+                let imp = b.killer.colorName; let msgs = [`Stupid ${imp} i hate you, you killed me!`, `bro ${imp} is imp`, `why did ${imp} target me`];
                 addChatMsg(b.colorName, msgs[Math.floor(Math.random()*msgs.length)], true);
             }, 3000 + Math.random() * 4000);
         }
@@ -786,27 +803,19 @@ function triggerReport(reporter, deadBody) {
         const btnContainer = document.getElementById('voting-buttons');
         alivePlayers.forEach(p => {
             let btn = document.createElement('button'); btn.className = 'vote-btn'; btn.innerText = `Vote ${p.colorName}`; btn.style.borderColor = p.colorHex;
-            btn.onclick = () => { if(!player.isDead) castVote(p, accusedName, alivePlayers); };
-            btnContainer.appendChild(btn);
+            btn.onclick = () => { if(!player.isDead) castVote(p, accusedName, alivePlayers); }; btnContainer.appendChild(btn);
         });
         let skipBtn = document.createElement('button'); skipBtn.className = 'vote-btn skip-btn'; skipBtn.innerText = "Skip Vote";
-        skipBtn.onclick = () => { if(!player.isDead) castVote(null, accusedName, alivePlayers); };
-        btnContainer.appendChild(skipBtn);
+        skipBtn.onclick = () => { if(!player.isDead) castVote(null, accusedName, alivePlayers); }; btnContainer.appendChild(skipBtn);
         
-        // If player is dead, auto cast vote for bots so meeting progresses
         if (player.isDead) setTimeout(() => castVote(null, accusedName, alivePlayers, true), 3000);
-
     }, delay);
 }
 
 function castVote(playerChoice, accusedName, alivePlayers, autoBotVote = false) {
-    let voteLedger = { "Skip": [] };
-    alivePlayers.forEach(p => voteLedger[p.colorName] = []);
+    let voteLedger = { "Skip": [] }; alivePlayers.forEach(p => voteLedger[p.colorName] = []);
 
-    if (!autoBotVote && !player.isDead) {
-        let pTarget = playerChoice ? playerChoice.colorName : "Skip";
-        voteLedger[pTarget].push(player);
-    }
+    if (!autoBotVote && !player.isDead) { let pTarget = playerChoice ? playerChoice.colorName : "Skip"; voteLedger[pTarget].push(player); }
 
     alivePlayers.forEach(p => {
         if (!p.isPlayer) {
@@ -834,13 +843,11 @@ function castVote(playerChoice, accusedName, alivePlayers, autoBotVote = false) 
             resultsHTML += `<div style="display:flex; align-items:center; justify-content:space-between; background:rgba(0,0,0,0.6); padding:8px 15px; border-radius:8px; border-left: 5px solid ${targetColor};"><span style="color:${targetColor}; font-weight:bold; font-size:16px; text-shadow: 1px 1px 2px #000;">${name} <span style="font-size:12px; color:#aaa;">(${voteLedger[name].length})</span></span><div>${voterDots}</div></div>`;
         }
     }
-    resultsHTML += '</div>';
-    document.getElementById('voting-buttons').innerHTML = resultsHTML;
+    resultsHTML += '</div>'; document.getElementById('voting-buttons').innerHTML = resultsHTML;
 
     setTimeout(() => {
         document.getElementById('voting-layer').style.display = 'none';
         
-        // EJECT SCREEN ANIMATION
         let isImp = false;
         if (ejectedName && ejectedName !== "Skip" && !tie) {
             let ejectedObj = [player, ...bots].find(p => p.colorName === ejectedName);
@@ -857,10 +864,8 @@ function castVote(playerChoice, accusedName, alivePlayers, autoBotVote = false) 
         setTimeout(() => {
             document.getElementById('eject-screen').style.display = 'none';
             [player, ...bots].forEach(c => { if (c.isDead) c.isCleanedUp = true; });
-            tpToCafe();
-            killCooldown = 15; gamePaused = false; checkWinCondition(); 
+            tpToCafe(); meetingCooldown = 15; killCooldown = 15; gamePaused = false; checkWinCondition(); 
         }, 5000);
-        
     }, 4000);
 }
 
@@ -875,19 +880,16 @@ function checkWinCondition() {
 }
 
 function triggerEnd(message, color) {
-    gameWon = true;
-    let el = document.getElementById('end-text');
+    gameWon = true; let el = document.getElementById('end-text');
     el.innerText = message; el.style.color = color;
-    el.className = ''; void el.offsetWidth; // reset anim
-    document.getElementById('end-screen').style.display = 'flex';
+    el.className = ''; void el.offsetWidth; document.getElementById('end-screen').style.display = 'flex';
     setTimeout(() => location.reload(), 4000); 
 }
 
 function drawNavigationArrow() {
     let targetX = elecPanel.x + elecPanel.w / 2; let targetY = elecPanel.y + elecPanel.h / 2;
     let playerCenterX = player.x + drawSize / 2; let playerCenterY = player.y + drawSize / 2;
-    let angle = Math.atan2(targetY - playerCenterY, targetX - playerCenterX);
-    let arrowRadius = drawSize + 30;
+    let angle = Math.atan2(targetY - playerCenterY, targetX - playerCenterX); let arrowRadius = drawSize + 30;
     let centerX = canvas.width / 2; let centerY = canvas.height / 2;
     let screenArrowX = centerX + (Math.cos(angle) * arrowRadius); let screenArrowY = centerY + (Math.sin(angle) * arrowRadius);
 
@@ -912,20 +914,25 @@ function gameLoop() {
     if (now - lastTick >= 1000) {
         if (killCooldown > 0 && !gamePaused && !gameWon) killCooldown--;
         if (globalSabotageCooldown > 0 && !gamePaused && !gameWon) globalSabotageCooldown--;
+        if (meetingCooldown > 0 && !gamePaused && !gameWon) meetingCooldown--;
         if (!gamePaused && !gameWon) {
             doors.forEach(d => { if (d.closeTimer > 0) { d.closeTimer--; if (d.closeTimer === 0) d.isClosed = false; } if (d.cooldown > 0) d.cooldown--; });
         }
         lastTick = now;
     }
 
+    if (adminMapOpen) drawAdminMap();
+
     let nearPanel = Math.hypot(player.x - (elecPanel.x + elecPanel.w/2), player.y - (elecPanel.y + elecPanel.h/2)) < 150;
-    document.getElementById('use-btn').className = (lightsOut && nearPanel && !gamePaused && !player.inVent && !player.isDead) ? 'action-btn active-use' : 'action-btn';
+    let nearCafe = Math.hypot(player.x - 1000, player.y - 750) < 150 && meetingCooldown <= 0;
+    let nearAdmin = Math.hypot(player.x - 1275, player.y - 560) < 150;
+    let canUse = (lightsOut && nearPanel) || nearCafe || nearAdmin;
+    document.getElementById('use-btn').className = (canUse && !gamePaused && !player.inVent && !player.isDead) ? 'action-btn active-use' : 'action-btn';
 
     if (player.isImpostor && !player.isDead) {
         const killBtn = document.getElementById('kill-btn');
-        if (killCooldown > 0) {
-            killBtn.className = 'action-btn cooldown'; killBtn.innerText = killCooldown;
-        } else {
+        if (killCooldown > 0) { killBtn.className = 'action-btn cooldown'; killBtn.innerText = killCooldown; } 
+        else {
             let canKill = bots.some(b => !b.isDead && !b.isEjected && !b.inVent && Math.hypot(b.x - player.x, b.y - player.y) < 90);
             killBtn.className = (canKill && !gamePaused && !lightsOut && !player.inVent) ? 'action-btn active-kill' : 'action-btn';
             killBtn.innerText = 'KILL (E)';
@@ -956,7 +963,7 @@ function gameLoop() {
     if (!gamePaused && !gameWon && !lightsOut && !player.inVent) {
         bots.forEach(bot => {
             if (!bot.isDead && !bot.isEjected && !bot.inVent) {
-                bots.filter(c => c.isDead && !c.isCleanedUp).forEach(body => { if (Math.hypot(bot.x - body.x, bot.y - body.y) < 150) triggerReport(bot, body); });
+                bots.filter(c => c.isDead && !c.isCleanedUp).forEach(body => { if (Math.hypot(bot.x - body.x, bot.y - body.y) < 150) triggerReport(bot, body, false); });
             }
         });
     }
@@ -964,7 +971,6 @@ function gameLoop() {
     const ventUIEl = document.getElementById('vent-ui');
     if (ventUIEl) ventUIEl.style.display = (player.inVent && !gamePaused && !gameWon && !player.isDead) ? 'flex' : 'none';
 
-    // Show Death Status
     let killLayer = document.getElementById('kill-status');
     if (killLayer) killLayer.style.opacity = player.isDead ? 1 : 0;
 
@@ -975,7 +981,6 @@ function gameLoop() {
 
     ctx.fillStyle = "#2a2a2a"; ctx.fillRect(0, 0, WORLD_W, WORLD_H);
     
-    // 1. Reactor Core Room
     ctx.fillStyle = "#1e293b"; ctx.beginPath(); ctx.arc(250, 300, 130, 0, Math.PI*2); ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = "#334155";
     for(let i=130; i<=370; i+=25) { ctx.beginPath(); ctx.moveTo(i, 170); ctx.lineTo(i, 430); ctx.stroke(); ctx.beginPath(); ctx.moveTo(130, i-130+170); ctx.lineTo(370, i-130+170); ctx.stroke(); }
     let radGrad = ctx.createRadialGradient(250, 300, 5, 250, 300, 95);
@@ -984,16 +989,13 @@ function gameLoop() {
     ctx.strokeStyle = "#0284c7"; ctx.lineWidth = 12; ctx.beginPath(); ctx.arc(250, 300, 85, 0, Math.PI*2); ctx.stroke();
     ctx.fillStyle = "#64748b"; ctx.fillRect(242, 170, 16, 45); ctx.fillRect(242, 385, 16, 45); ctx.fillRect(130, 292, 45, 16); ctx.fillRect(325, 292, 45, 16);
 
-    // 2. Admin Command Room
     ctx.fillStyle = "#1e293b"; ctx.fillRect(1130, 480, 290, 160); ctx.fillStyle = "#0f172a"; ctx.fillRect(1145, 495, 260, 130); ctx.strokeStyle = "#334155"; ctx.lineWidth = 6; ctx.strokeRect(1145, 495, 260, 130);
     let holoBase = ctx.createRadialGradient(1275, 560, 5, 1275, 560, 75); holoBase.addColorStop(0, "rgba(34, 197, 94, 0.45)"); holoBase.addColorStop(1, "rgba(0,0,0,0)");
     ctx.fillStyle = holoBase; ctx.fillRect(1150, 500, 250, 120); let t = Date.now() / 800; ctx.strokeStyle = "rgba(74, 222, 128, 0.6)"; ctx.lineWidth = 3;
     if(ctx.ellipse) { ctx.beginPath(); ctx.ellipse(1275, 560, 90 + Math.sin(t)*8, 45 + Math.sin(t)*4, 0, 0, Math.PI*2); ctx.stroke(); ctx.beginPath(); ctx.ellipse(1275, 560, 45 - Math.cos(t)*6, 22 - Math.cos(t)*3, 0, 0, Math.PI*2); ctx.stroke(); }
 
-    // 3. Storage Supply Room
     drawCrate(840, 1310, 75); drawCrate(930, 1280, 95); drawCrate(885, 1375, 85);
 
-    // 4. Electrical Control Room
     ctx.save(); ctx.beginPath(); ctx.rect(850, 250, 200, 20); ctx.clip(); ctx.fillStyle = "#eab308"; ctx.fillRect(850, 250, 200, 20); ctx.fillStyle = "#0f172a";
     for(let i=-30; i<250; i+=35) { ctx.beginPath(); ctx.moveTo(850+i, 250); ctx.lineTo(850+i+20, 250); ctx.lineTo(850+i+5, 270); ctx.lineTo(850+i-15, 270); ctx.fill(); }
     ctx.restore(); ctx.fillStyle = "#334155"; ctx.fillRect(810, 50, 75, 165); ctx.fillStyle = "#1e293b"; ctx.fillRect(815, 55, 65, 155); ctx.fillStyle = "#020617"; ctx.fillRect(822, 65, 51, 40); ctx.fillRect(822, 115, 51, 85); 
@@ -1004,9 +1006,8 @@ function gameLoop() {
     // 5. Cafeteria (Center)
     ctx.fillStyle = "#111"; ctx.beginPath(); ctx.arc(1000, 750, 80, 0, Math.PI*2); ctx.fill();
     ctx.strokeStyle = "#444"; ctx.lineWidth = 10; ctx.beginPath(); ctx.arc(1000, 750, 80, 0, Math.PI*2); ctx.stroke();
-    ctx.fillStyle = "#ff4747"; ctx.beginPath(); ctx.arc(1000, 750, 20, 0, Math.PI*2); ctx.fill(); // Emergency Button
+    ctx.fillStyle = "#ff4747"; ctx.beginPath(); ctx.arc(1000, 750, 20, 0, Math.PI*2); ctx.fill(); 
 
-    // Vents
     ctx.fillStyle = "#475569"; ctx.strokeStyle = "#0f172a"; ctx.lineWidth = 4;
     vents.forEach(v => { ctx.fillRect(v.x - 30, v.y - 30, 60, 60); ctx.strokeRect(v.x - 30, v.y - 30, 60, 60); ctx.beginPath(); for(let i = -15; i <= 15; i += 10) { ctx.moveTo(v.x - 21, v.y + i); ctx.lineTo(v.x + 21, v.y + i); } ctx.stroke(); });
 
@@ -1018,7 +1019,7 @@ function gameLoop() {
     if (lightsOut) { ctx.fillStyle = "rgba(239, 68, 68, 0.45)"; ctx.beginPath(); ctx.arc(elecPanel.x + elecPanel.w/2, elecPanel.y - 20, 15 + Math.sin(Date.now()/150)*6, 0, Math.PI*2); ctx.fill(); }
 
     let allEntities = [...bots, player];
-    allEntities.forEach(e => { if (e.isDead && e.isCleanedUp) { e.update(); e.draw(ctx); } }); // Draw ghosts/bodies first
+    allEntities.forEach(e => { if (e.isDead && e.isCleanedUp) { e.update(); e.draw(ctx); } }); 
     allEntities.forEach(e => { if (!(e.isDead && e.isCleanedUp)) { e.update(); e.draw(ctx); } });
 
     ctx.restore();
