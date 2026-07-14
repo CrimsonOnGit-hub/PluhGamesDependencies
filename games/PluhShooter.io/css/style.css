@@ -1,0 +1,821 @@
+/* ═══════════════════════════════════════════════════════════
+   VOXEL STRIKE — Stylesheet
+   Cyberpunk / Neon aesthetic · Glassmorphic panels
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Fonts ─────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Rajdhani:wght@300;400;500;600;700&display=swap');
+
+/* ── Reset & Base ──────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    overflow: hidden;
+    background: #0a0a12;
+    font-family: 'Rajdhani', sans-serif;
+    color: #fff;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+#game-container {
+    width: 100vw;
+    height: 100vh;
+    position: relative;
+}
+
+canvas {
+    display: block;
+}
+
+/* ── Keyframe Animations ───────────────────────────────────── */
+
+@keyframes titleGlow {
+    0%, 100% {
+        text-shadow:
+            0 0 10px rgba(0, 240, 255, 0.6),
+            0 0 30px rgba(0, 240, 255, 0.3),
+            0 0 60px rgba(0, 240, 255, 0.15);
+    }
+    50% {
+        text-shadow:
+            0 0 20px rgba(0, 240, 255, 0.9),
+            0 0 50px rgba(0, 240, 255, 0.5),
+            0 0 100px rgba(0, 240, 255, 0.25),
+            0 0 140px rgba(0, 240, 255, 0.1);
+    }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+@keyframes fadeOut {
+    from { opacity: 1; }
+    to   { opacity: 0; }
+}
+
+@keyframes slideInRight {
+    from { transform: translateX(100%); opacity: 0; }
+    to   { transform: translateX(0);    opacity: 1; }
+}
+
+@keyframes pulseRed {
+    0%, 100% { background: linear-gradient(90deg, #ff2244, #ff4466); }
+    50%      { background: linear-gradient(90deg, #ff0022, #cc0033); box-shadow: 0 0 14px rgba(255, 0, 50, 0.7); }
+}
+
+@keyframes damageFlash {
+    0%   { opacity: 0; }
+    20%  { opacity: 0.4; }
+    100% { opacity: 0; }
+}
+
+@keyframes reloadPulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.3; }
+}
+
+@keyframes btnShine {
+    0%   { left: -75%; }
+    100% { left: 125%; }
+}
+
+@keyframes crosshairExpand {
+    from { --cross-gap: 4px; }
+    to   { --cross-gap: 10px; }
+}
+
+@keyframes scanline {
+    0%   { transform: translateY(-100%); }
+    100% { transform: translateY(100vh); }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MAIN MENU
+   ═══════════════════════════════════════════════════════════ */
+
+#main-menu {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle, rgba(10, 10, 18, 0.3) 0%, rgba(10, 10, 18, 0.8) 100%);
+    animation: fadeIn 0.5s ease;
+}
+
+.menu-panel {
+    background: rgba(10, 10, 18, 0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(0, 240, 255, 0.15);
+    border-radius: 16px;
+    padding: 48px 56px;
+    text-align: center;
+    max-width: 700px;
+    width: 90%;
+    box-shadow:
+        0 0 40px rgba(0, 240, 255, 0.1),
+        inset 0 0 40px rgba(0, 240, 255, 0.05);
+    position: relative;
+    overflow: hidden;
+}
+
+/* Subtle top-edge highlight */
+.menu-panel::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 10%;
+    right: 10%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(0, 240, 255, 0.5), transparent);
+}
+
+.game-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 48px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 8px;
+    color: #fff;
+    animation: titleGlow 3s ease-in-out infinite;
+    margin-bottom: 8px;
+    line-height: 1.2;
+}
+
+.game-title .accent {
+    color: #00f0ff;
+}
+
+.subtitle {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 16px;
+    font-weight: 400;
+    letter-spacing: 6px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.45);
+    margin-bottom: 40px;
+}
+
+/* ── Mode Buttons ──────────────────────────────────────────── */
+
+.mode-buttons {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    margin-bottom: 36px;
+}
+
+.mode-btn {
+    padding: 16px 20px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    border: 2px solid;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+    line-height: 1.5;
+    background: transparent;
+    height: 100%;
+}
+
+.mode-btn .btn-icon {
+    display: block;
+    font-size: 22px;
+    margin-bottom: 4px;
+}
+
+.mode-btn small {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 1px;
+    opacity: 0.6;
+}
+
+/* Sweep / shine pseudo-element */
+.mode-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -75%;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(
+        120deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.12) 50%,
+        transparent 100%
+    );
+    transition: none;
+}
+
+.mode-btn:hover::before {
+    animation: btnShine 0.6s ease forwards;
+}
+
+/* Offline (cyan) */
+.mode-btn.offline {
+    border-color: #00f0ff;
+    color: #00f0ff;
+}
+
+.mode-btn.offline:hover {
+    background: rgba(0, 240, 255, 0.15);
+    box-shadow: 0 0 30px rgba(0, 240, 255, 0.3);
+    transform: translateY(-2px);
+}
+
+/* Online (magenta) */
+.mode-btn.online {
+    border-color: #ff00aa;
+    color: #ff00aa;
+}
+
+.mode-btn.online:hover {
+    background: rgba(255, 0, 170, 0.15);
+    box-shadow: 0 0 30px rgba(255, 0, 170, 0.3);
+    transform: translateY(-2px);
+}
+
+/* Multi-level menu layouts */
+#primary-menu {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    margin-bottom: 30px;
+    width: 100%;
+}
+
+#offline-menu .mode-buttons {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 16px;
+    margin-bottom: 20px;
+    width: 100%;
+}
+
+#online-menu .mode-buttons {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 16px;
+    margin-bottom: 20px;
+    width: 100%;
+}
+
+.mode-btn.back-btn {
+    border-color: rgba(255, 255, 255, 0.25);
+    color: rgba(255, 255, 255, 0.7);
+    background: rgba(255, 255, 255, 0.03);
+    padding: 12px 24px;
+    font-size: 13px;
+    letter-spacing: 2px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.mode-btn.back-btn:hover {
+    border-color: rgba(255, 255, 255, 0.75);
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
+    transform: translateY(-1px);
+}
+
+.version {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 12px;
+    opacity: 0.4;
+    letter-spacing: 2px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   HUD
+   ═══════════════════════════════════════════════════════════ */
+
+#hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 50;
+    display: none;
+}
+
+#hud.active {
+    display: block;
+}
+
+/* ── Damage flash vignette ─────────────────────────────────── */
+
+#hud.damage-flash::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 40%, rgba(255, 0, 30, 0.45) 100%);
+    animation: damageFlash 300ms ease-out forwards;
+    pointer-events: none;
+    z-index: 999;
+}
+
+/* ── Crosshair ─────────────────────────────────────────────── */
+
+#crosshair {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 0;
+    height: 0;
+}
+
+.cross-line {
+    position: absolute;
+    background: #fff;
+    border-radius: 1px;
+    filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.5));
+    transition: all 0.12s ease;
+}
+
+.cross-line.top {
+    width: 2px;
+    height: 12px;
+    left: -1px;
+    bottom: 4px;
+}
+
+.cross-line.bottom {
+    width: 2px;
+    height: 12px;
+    left: -1px;
+    top: 4px;
+}
+
+.cross-line.left {
+    height: 2px;
+    width: 12px;
+    top: -1px;
+    right: 4px;
+}
+
+.cross-line.right {
+    height: 2px;
+    width: 12px;
+    top: -1px;
+    left: 4px;
+}
+
+.cross-dot {
+    position: absolute;
+    width: 2px;
+    height: 2px;
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: 50%;
+    top: -1px;
+    left: -1px;
+}
+
+/* Crosshair spread (shooting / moving) */
+#crosshair.crosshair-spread .cross-line.top    { bottom: 10px; }
+#crosshair.crosshair-spread .cross-line.bottom { top: 10px; }
+#crosshair.crosshair-spread .cross-line.left   { right: 10px; }
+#crosshair.crosshair-spread .cross-line.right  { left: 10px; }
+
+/* ── Health ────────────────────────────────────────────────── */
+
+#health-container {
+    position: absolute;
+    left: 24px;
+    bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+#health-container .label {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    color: #00f0ff;
+    letter-spacing: 2px;
+}
+
+.bar-bg {
+    width: 200px;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+}
+
+#health-bar {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, #00f0ff, #00ff88);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+    position: relative;
+}
+
+/* Sheen on health bar */
+#health-bar::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 50%;
+    background: linear-gradient(180deg, rgba(255,255,255,0.18) 0%, transparent 100%);
+    border-radius: 4px 4px 0 0;
+}
+
+#health-text {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    min-width: 36px;
+    text-align: right;
+}
+
+/* Low health state */
+#health-container.health-low #health-bar {
+    background: linear-gradient(90deg, #ff2244, #ff4466);
+    animation: pulseRed 0.8s ease-in-out infinite;
+}
+
+#health-container.health-low #health-text {
+    color: #ff2244;
+}
+
+#health-container.health-low .label {
+    color: #ff2244;
+}
+
+/* ── Ammo ──────────────────────────────────────────────────── */
+
+#ammo-display {
+    position: absolute;
+    right: 24px;
+    bottom: 24px;
+    display: flex;
+    align-items: baseline;
+    gap: 2px;
+    font-family: 'Orbitron', sans-serif;
+}
+
+#ammo-current {
+    font-size: 36px;
+    font-weight: 800;
+    letter-spacing: 1px;
+}
+
+.ammo-sep {
+    font-size: 20px;
+    opacity: 0.35;
+    margin: 0 4px;
+}
+
+#ammo-max {
+    font-size: 18px;
+    font-weight: 500;
+    opacity: 0.5;
+}
+
+#reload-text {
+    display: none;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 3px;
+    color: #ff00aa;
+    margin-left: 12px;
+    align-self: center;
+}
+
+#ammo-display.reloading #ammo-current,
+#ammo-display.reloading #ammo-max,
+#ammo-display.reloading .ammo-sep {
+    animation: reloadPulse 0.8s ease-in-out infinite;
+}
+
+#ammo-display.reloading #reload-text {
+    display: inline;
+    animation: reloadPulse 0.8s ease-in-out infinite;
+}
+
+/* ── Kill Feed ─────────────────────────────────────────────── */
+
+#kill-feed {
+    position: absolute;
+    right: 24px;
+    top: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-width: 300px;
+}
+
+.kill-entry {
+    background: rgba(10, 10, 18, 0.7);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-left: 3px solid #00f0ff;
+    border-radius: 4px;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    animation: slideInRight 0.3s ease forwards;
+    white-space: nowrap;
+}
+
+.kill-entry.fade-out {
+    animation: fadeOut 0.5s ease forwards;
+}
+
+/* ── Score ──────────────────────────────────────────────────── */
+
+#score-display {
+    position: absolute;
+    top: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(10, 10, 18, 0.55);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    padding: 8px 20px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.score-label {
+    font-size: 11px;
+    font-weight: 500;
+    opacity: 0.45;
+    letter-spacing: 1px;
+}
+
+.score-sep {
+    opacity: 0.2;
+    margin: 0 4px;
+}
+
+#score-kills {
+    color: #00f0ff;
+    font-weight: 700;
+}
+
+#score-deaths {
+    color: #ff00aa;
+    font-weight: 700;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TEAM INDICATOR
+   ═══════════════════════════════════════════════════════════ */
+
+#team-indicator {
+    position: absolute;
+    left: 24px;
+    top: 60px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    padding: 8px 18px;
+    border-radius: 6px;
+    border: 2px solid;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    animation: fadeIn 0.5s ease;
+}
+
+#team-indicator.team-blue {
+    color: #4488ff;
+    border-color: #4488ff;
+    background: rgba(34, 68, 187, 0.2);
+    box-shadow: 0 0 20px rgba(68, 136, 255, 0.3);
+    text-shadow: 0 0 10px rgba(68, 136, 255, 0.5);
+}
+
+#team-indicator.team-red {
+    color: #ff4444;
+    border-color: #ff4444;
+    background: rgba(187, 34, 34, 0.2);
+    box-shadow: 0 0 20px rgba(255, 68, 68, 0.3);
+    text-shadow: 0 0 10px rgba(255, 68, 68, 0.5);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   HIT MARKER
+   ═══════════════════════════════════════════════════════════ */
+
+@keyframes hitMarkerFlash {
+    0%   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    100% { opacity: 0; transform: translate(-50%, -50%) scale(1.5); }
+}
+
+#hit-marker {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 20px;
+    height: 20px;
+    pointer-events: none;
+    z-index: 55;
+}
+
+#hit-marker.active {
+    display: block !important;
+    animation: hitMarkerFlash 0.2s ease-out forwards;
+}
+
+.hit-x {
+    position: absolute;
+    width: 18px;
+    height: 2px;
+    background: #fff;
+    top: 50%;
+    left: 50%;
+    filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.8));
+}
+
+.hit-x:first-child {
+    transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.hit-x:last-child {
+    transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   HEADSHOT TEXT
+   ═══════════════════════════════════════════════════════════ */
+
+@keyframes headshotFlash {
+    0%   { opacity: 1; transform: translate(-50%, -50%) scale(0.8); }
+    30%  { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+    100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
+}
+
+#headshot-text {
+    position: absolute;
+    top: 40%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 28px;
+    font-weight: 800;
+    color: #ff2244;
+    letter-spacing: 8px;
+    text-transform: uppercase;
+    text-shadow:
+        0 0 10px rgba(255, 34, 68, 0.8),
+        0 0 30px rgba(255, 34, 68, 0.4);
+    pointer-events: none;
+    z-index: 55;
+}
+
+#headshot-text.active {
+    display: block !important;
+    animation: headshotFlash 0.6s ease-out forwards;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DEATH SCREEN
+   ═══════════════════════════════════════════════════════════ */
+
+#death-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(10, 2, 2, 0.6);
+    animation: fadeIn 0.4s ease;
+}
+
+#death-screen.active {
+    display: flex;
+}
+
+.death-panel {
+    background: rgba(10, 10, 18, 0.88);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 0, 50, 0.2);
+    border-radius: 16px;
+    padding: 48px 64px;
+    text-align: center;
+    box-shadow:
+        0 0 60px rgba(255, 0, 30, 0.12),
+        inset 0 0 40px rgba(255, 0, 30, 0.04);
+}
+
+.death-panel h2 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 52px;
+    font-weight: 900;
+    color: #ff2244;
+    letter-spacing: 10px;
+    text-transform: uppercase;
+    text-shadow:
+        0 0 20px rgba(255, 34, 68, 0.6),
+        0 0 60px rgba(255, 34, 68, 0.2);
+    margin-bottom: 16px;
+}
+
+.death-panel #death-info {
+    font-size: 16px;
+    opacity: 0.65;
+    margin-bottom: 8px;
+    letter-spacing: 1px;
+}
+
+.death-panel p {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 14px;
+    opacity: 0.5;
+    letter-spacing: 2px;
+}
+
+#respawn-timer {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 700;
+    font-size: 20px;
+    color: #00f0ff;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PAUSE SCREEN
+   ═══════════════════════════════════════════════════════════ */
+
+#pause-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(10, 10, 18, 0.5);
+    animation: fadeIn 0.3s ease;
+}
+
+#pause-screen.active {
+    display: flex;
+}
+
+.pause-panel {
+    background: rgba(10, 10, 18, 0.88);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(0, 240, 255, 0.12);
+    border-radius: 16px;
+    padding: 48px 64px;
+    text-align: center;
+    box-shadow:
+        0 0 40px rgba(0, 240, 255, 0.08),
+        inset 0 0 40px rgba(0, 240, 255, 0.03);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    align-items: center;
+}
+
+.pause-panel h2 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 40px;
+    font-weight: 800;
+    letter-spacing: 10px;
+    text-transform: uppercase;
+    color: #fff;
+    text-shadow: 0 0 20px rgba(0, 240, 255, 0.3);
+    margin-bottom: 12px;
+}
+
+.pause-panel .mode-btn {
+    pointer-events: auto;
+    min-width: 180px;
+}

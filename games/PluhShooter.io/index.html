@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PluhShooter — 3D Voxel FPS</title>
+    <meta name="description" content="A fast-paced 3D voxel first-person shooter built with Three.js.">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="game-container">
+
+        <!-- ═══════════════════════════════════════════════════
+             MAIN MENU
+             ═══════════════════════════════════════════════════ -->
+        <div id="main-menu">
+            <div class="menu-panel">
+                <h1 class="game-title">PluhShooter</h1>
+                <p class="subtitle">Fast-Paced Voxel Combat</p>
+
+                <!-- Player Name Input -->
+                <div class="name-input-container" style="display: flex; flex-direction: column; align-items: center; gap: 8px; margin-bottom: 25px; font-family: 'Rajdhani', sans-serif;">
+                    <label for="player-name" style="font-size: 14px; color: #00f0ff; letter-spacing: 2px; font-weight: 600; text-transform: uppercase;">PLAYER NAME:</label>
+                    <input type="text" id="player-name" value="PLAYER" maxlength="12" style="padding: 10px 20px; background: rgba(10, 10, 18, 0.7); color: #fff; border: 1px solid rgba(0, 240, 255, 0.4); border-radius: 4px; font-family: 'Rajdhani', sans-serif; font-size: 16px; text-align: center; width: 220px; outline: none; box-shadow: 0 0 12px rgba(0, 240, 255, 0.15); text-transform: uppercase; font-weight: 600; letter-spacing: 1px;" />
+                </div>
+
+                <!-- Primary Menu (Offline / Online buttons) -->
+                <div id="primary-menu" class="mode-buttons" style="display: flex; gap: 15px; margin-bottom: 30px;">
+                    <button class="mode-btn offline" id="btn-show-offline" style="min-width: 180px;">
+                        <span class="btn-icon">⚔</span>
+                        OFFLINE<br><small>Play with Bots</small>
+                    </button>
+
+                    <button class="mode-btn online" id="btn-show-online" style="min-width: 180px; border-left-color: #44aaff;">
+                        <span class="btn-icon">🌐</span>
+                        ONLINE<br><small>Multiplayer</small>
+                    </button>
+                </div>
+
+                <!-- Offline Sub-menu -->
+                <div id="offline-menu" style="display: none; flex-direction: column; align-items: center; gap: 20px; width: 100%; margin-bottom: 10px;">
+                    <div class="mode-buttons" style="display: flex; gap: 15px;">
+                        <button class="mode-btn offline" id="btn-offline">
+                            <span class="btn-icon">⚔</span>
+                            FREE FOR ALL<br><small>Classic Deathmatch</small>
+                        </button>
+
+                        <button class="mode-btn offline" id="btn-tdm" style="border-left-color: #44aaff;">
+                            <span class="btn-icon">🛡</span>
+                            TEAM DEATHMATCH<br><small>Red vs Blue</small>
+                        </button>
+
+                        <button class="mode-btn offline" id="btn-zombies" style="border-left-color: #44ff44;">
+                            <span class="btn-icon">🧟</span>
+                            ZOMBIES<br><small>Survival Waves</small>
+                        </button>
+                    </div>
+
+                    <div class="bot-config-container" style="display:flex; align-items:center; justify-content:center; gap:12px; font-family:'Rajdhani', sans-serif;">
+                        <span style="font-size:14px; opacity:0.7; letter-spacing:2px; text-transform:uppercase; font-weight:600; color:#00f0ff;">BOT DIFFICULTY:</span>
+                        <select id="bot-difficulty" style="padding: 8px 16px; background: rgba(10,10,18,0.7); color: #00f0ff; border: 1px solid rgba(0, 240, 255, 0.4); border-radius: 4px; font-family: 'Rajdhani', sans-serif; font-size: 14px; text-transform: uppercase; cursor: pointer; outline: none; letter-spacing: 1px; font-weight: 600; box-shadow: 0 0 12px rgba(0, 240, 255, 0.15);">
+                            <option value="easy">Easy</option>
+                            <option value="normal" selected>Normal</option>
+                            <option value="hard">Hard</option>
+                        </select>
+                    </div>
+
+                    <button class="mode-btn back-btn" id="btn-back-offline">
+                        BACK TO MENU
+                    </button>
+                </div>
+
+                <!-- Online Sub-menu -->
+                <div id="online-menu" style="display: none; flex-direction: column; align-items: center; gap: 20px; width: 100%; margin-bottom: 10px;">
+                    <div class="mode-buttons" style="display: flex; gap: 15px;">
+                        <button class="mode-btn online" id="btn-online-classic">
+                            <span class="btn-icon">⚔</span>
+                            ONLINE CLASSIC<br><small>Free For All</small>
+                        </button>
+
+                        <button class="mode-btn online" id="btn-online-tdm" style="border-left-color: #44aaff;">
+                            <span class="btn-icon">🛡</span>
+                            ONLINE TDM<br><small>Red vs Blue</small>
+                        </button>
+                    </div>
+
+                    <button class="mode-btn back-btn" id="btn-back-online">
+                        BACK TO MENU
+                    </button>
+                </div>
+
+                <p class="version">v0.1.0 — Built with Three.js</p>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════
+             HUD
+             ═══════════════════════════════════════════════════ -->
+        <div id="hud">
+
+            <!-- Crosshair -->
+            <div id="crosshair">
+                <div class="cross-line top"></div>
+                <div class="cross-line right"></div>
+                <div class="cross-line bottom"></div>
+                <div class="cross-line left"></div>
+                <div class="cross-dot"></div>
+            </div>
+
+            <!-- Health -->
+            <div id="health-container">
+                <span class="label">HP</span>
+                <div class="bar-bg">
+                    <div id="health-bar"></div>
+                </div>
+                <span id="health-text">100</span>
+            </div>
+
+            <!-- Ammo Display -->
+            <div id="ammo-display">
+                <span id="weapon-name" style="font-size:16px; margin-right:15px; opacity:0.8; color:#00f0ff;">ASSAULT RIFLE</span>
+                <span id="ammo-current">30</span>
+                <span class="ammo-sep">/</span>
+                <span id="ammo-max">30</span>
+                <span id="reload-text">RELOADING...</span>
+            </div>
+
+            <!-- Kill Feed -->
+            <div id="kill-feed"></div>
+
+            <!-- Score -->
+            <div id="score-display">
+                <span class="score-label">K</span><span id="score-kills">0</span>
+                <span class="score-sep">/</span>
+                <span class="score-label">D</span><span id="score-deaths">0</span>
+            </div>
+
+            <!-- Team Indicator (TDM mode) -->
+            <div id="team-indicator" style="display:none;"></div>
+
+            <!-- Hit Marker -->
+            <div id="hit-marker" style="display:none;">
+                <div class="hit-x"></div>
+                <div class="hit-x"></div>
+            </div>
+
+            <!-- Headshot Text -->
+            <div id="headshot-text" style="display:none;">HEADSHOT</div>
+
+            <!-- Sniper Scope Overlay -->
+            <div id="sniper-scope-overlay" style="display:none; position:fixed; inset:0; z-index:95; pointer-events:none; justify-content:center; align-items:center;">
+                <!-- Main circular scope sight -->
+                <div class="scope-circle" style="position:relative; width:550px; height:550px; border-radius:50%; border:6px solid #111; box-shadow:0 0 0 9999px #000, inset 0 0 100px rgba(0,0,0,0.95); overflow:hidden; display:flex; justify-content:center; align-items:center;">
+                    <!-- Crosshair lines -->
+                    <div class="scope-line-h" style="position:absolute; width:100%; height:2px; background:#000;"></div>
+                    <div class="scope-line-v" style="position:absolute; width:2px; height:100%; background:#000;"></div>
+                    <!-- Center red dot -->
+                    <div class="scope-dot" style="position:absolute; width:6px; height:6px; border-radius:50%; background:#ff2222; box-shadow:0 0 10px #ff2222;"></div>
+                    <!-- Inner rings -->
+                    <div class="scope-ring" style="position:absolute; width:300px; height:300px; border:1px dashed rgba(255,255,255,0.15); border-radius:50%;"></div>
+                    <div class="scope-ring-small" style="position:absolute; width:100px; height:100px; border:1px dashed rgba(255,255,255,0.15); border-radius:50%;"></div>
+                </div>
+            </div>
+
+            <!-- AR Holographic Scope Reticle -->
+            <div id="ar-scope-reticle" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); z-index:95; pointer-events:none; width:44px; height:44px; border-radius:50%; border:2px solid rgba(0, 240, 255, 0.75); justify-content:center; align-items:center; box-shadow:0 0 12px rgba(0, 240, 255, 0.4);">
+                <div style="width:4px; height:4px; border-radius:50%; background:#00f0ff; box-shadow:0 0 8px #00f0ff;"></div>
+            </div>
+
+            <!-- Zombcoin display (Zombies mode only) -->
+            <div id="zombcoin-display" style="display:none; position:absolute; top:24px; right:350px; font-family:'Orbitron',sans-serif; font-size:16px; background:rgba(10,10,18,0.55); backdrop-filter:blur(10px); padding:8px 20px; border-radius:8px; border:1px solid rgba(240,190,0,0.2); color:#ffd700; text-shadow:0 0 10px rgba(240,190,0,0.5); z-index:100; pointer-events:none;">
+                <span style="margin-right:8px;">🪙</span><span id="zombcoins-val">0</span> ZOMBCOINS
+            </div>
+
+            <!-- Wall HP Display (Zombies mode only) -->
+            <div id="wall-hp-display" style="display:none; position:absolute; top:80px; left:50%; transform:translateX(-50%); font-family:'Orbitron',sans-serif; font-size:14px; text-align:center; z-index:100; pointer-events:none;">
+                <div style="color:#ffaa00; margin-bottom:4px; letter-spacing:2px; font-weight:700;">DEFENSIVE WALL HP</div>
+                <div class="bar-bg" style="width:250px; height:10px;">
+                    <div id="wall-hp-bar" style="width:100%; height:100%; background:linear-gradient(90deg, #ffaa00, #ff5500); transition:width 0.3s ease;"></div>
+                </div>
+                <span id="wall-hp-text" style="color:#ffaa00; font-weight:700;">100 / 100</span>
+            </div>
+            <!-- Interaction Prompt -->
+            <div id="interact-prompt" style="display:none; position:fixed; left:50%; top:62%; transform:translate(-50%, -50%);
+                font-family:'Orbitron',sans-serif; font-size:16px; font-weight:700; color:#ffd700;
+                background:rgba(18,10,5,0.75); border:1px solid rgba(255,170,0,0.3); padding:8px 20px; border-radius:6px;
+                letter-spacing:2px; box-shadow:0 0 20px rgba(255,170,0,0.15); z-index:100; pointer-events:none;">
+                PRESS <span style="color:#00f0ff; border:1px solid #00f0ff; padding:2px 8px; border-radius:4px; margin:0 4px; font-family:monospace;">E</span> TO TOGGLE BLAST DOOR
+            </div>
+
+        </div>
+
+        <!-- Wave Splash text (Zombies mode only) -->
+        <div id="wave-splash" style="display:none; position:fixed; inset:0; z-index:85; pointer-events:none; justify-content:center; align-items:center; flex-direction:column; text-align:center; font-family:'Orbitron',sans-serif;">
+            <h1 id="wave-splash-title" style="font-size:72px; font-weight:900; letter-spacing:15px; color:#ff3333; text-shadow:0 0 30px rgba(255,51,51,0.6); text-transform:uppercase; margin-bottom:8px;">WAVE 1</h1>
+            <p id="wave-splash-subtitle" style="font-size:18px; color:rgba(255,255,255,0.7); letter-spacing:4px; text-transform:uppercase;">THE HORDE APPROACHES</p>
+        </div>
+
+        <!-- Zombcoin Shop UI Overlay -->
+        <div id="zombcoin-shop" style="display:none; position:fixed; inset:0; z-index:110; background:rgba(0,0,0,0.75); justify-content:center; align-items:center;">
+            <div class="shop-panel" style="background:rgba(10,10,18,0.92); border:1px solid rgba(240,190,0,0.35); border-radius:16px; padding:36px; max-width:650px; width:90%; font-family:'Orbitron',sans-serif; box-shadow:0 0 50px rgba(240,190,0,0.15); color:#fff; position:relative;">
+                <h2 style="font-size:28px; color:#ffd700; text-align:center; margin-bottom:10px; letter-spacing:3px; text-shadow:0 0 15px rgba(240,190,0,0.5);">ZOMBCoins UPGRADE SHOP</h2>
+                <p style="font-family:'Rajdhani',sans-serif; text-align:center; font-size:14px; opacity:0.6; margin-bottom:24px; letter-spacing:1px;">Spend Zombcoins to reinforce defenses & upgrade combat capabilities. Press B to exit.</p>
+                <div style="position:absolute; top:36px; right:36px; font-size:18px; color:#ffd700; font-weight:700;"><span style="margin-right:6px;">🪙</span><span id="shop-coins-val">0</span> COINS</div>
+                
+                <div class="shop-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:24px; font-family:'Rajdhani',sans-serif;">
+                    <!-- Armory -->
+                    <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:16px;">
+                        <h3 style="font-family:'Orbitron',sans-serif; font-size:16px; color:#ffd700; margin-bottom:12px; border-bottom:1px solid rgba(240,190,0,0.2); padding-bottom:6px; font-weight:700;">ARMORY</h3>
+                        <div style="display:flex; flex-direction:column; gap:10px;">
+                            <button id="shop-buy-shotgun" class="shop-item-btn" style="display:flex; justify-content:space-between; align-items:center; width:100%; padding:10px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:#fff; font-weight:700; cursor:pointer; transition:all 0.2s;">
+                                <span>💥 UNLOCK SHOTGUN</span>
+                                <span style="color:#ffd700;">5 🪙</span>
+                            </button>
+                            <button id="shop-buy-sniper" class="shop-item-btn" style="display:flex; justify-content:space-between; align-items:center; width:100%; padding:10px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:#fff; font-weight:700; cursor:pointer; transition:all 0.2s;">
+                                <span>🎯 UNLOCK SNIPER</span>
+                                <span style="color:#ffd700;">8 🪙</span>
+                            </button>
+                            <button id="shop-buy-ammo" class="shop-item-btn" style="display:flex; justify-content:space-between; align-items:center; width:100%; padding:10px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:#fff; font-weight:700; cursor:pointer; transition:all 0.2s;">
+                                <span>📦 FULL AMMO REFILL</span>
+                                <span style="color:#ffd700;">2 🪙</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Defenses -->
+                    <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:16px;">
+                        <h3 style="font-family:'Orbitron',sans-serif; font-size:16px; color:#ffd700; margin-bottom:12px; border-bottom:1px solid rgba(240,190,0,0.2); padding-bottom:6px; font-weight:700;">DEFENSES & POWER</h3>
+                        <div style="display:flex; flex-direction:column; gap:10px;">
+                            <button id="shop-repair-wall" class="shop-item-btn" style="display:flex; justify-content:space-between; align-items:center; width:100%; padding:10px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:#fff; font-weight:700; cursor:pointer; transition:all 0.2s;">
+                                <span>🧱 REPAIR WALL (+50 HP)</span>
+                                <span style="color:#ffd700;">3 🪙</span>
+                            </button>
+                            <button id="shop-upgrade-wall" class="shop-item-btn" style="display:flex; justify-content:space-between; align-items:center; width:100%; padding:10px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:#fff; font-weight:700; cursor:pointer; transition:all 0.2s;">
+                                <span id="shop-wall-upgrade-text">🛡️ UPGRADE WALL (Wood)</span>
+                                <span id="shop-wall-upgrade-cost" style="color:#ffd700;">5 🪙</span>
+                            </button>
+                            <button id="shop-buy-dmg" class="shop-item-btn" style="display:flex; justify-content:space-between; align-items:center; width:100%; padding:10px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:#fff; font-weight:700; cursor:pointer; transition:all 0.2s;">
+                                <span>🔥 DAMAGE BOOST (+25% Dmg)</span>
+                                <span style="color:#ffd700;">6 🪙</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <button id="shop-close-btn" style="display:block; margin:0 auto; padding:12px 30px; font-family:'Orbitron',sans-serif; font-size:14px; font-weight:700; color:#000; background:#ffd700; border:none; border-radius:4px; cursor:pointer; transition:all 0.2s; box-shadow:0 0 15px rgba(240,190,0,0.4); text-transform:uppercase;">RESUME DEFENSE</button>
+            </div>
+        </div>
+
+        <!-- Zombies Game Over Screen -->
+        <div id="zombies-game-over-screen" style="display:none; position:fixed; inset:0; z-index:120; background:rgba(20,5,5,0.85); justify-content:center; align-items:center;">
+            <div class="death-panel" style="border-color:#ff3333; box-shadow:0 0 60px rgba(255,51,51,0.2);">
+                <h2 style="color:#ff3333; text-shadow:0 0 20px rgba(255,51,51,0.6);">BASE BREACHED</h2>
+                <p id="zombie-game-over-reason" style="font-size:18px; margin-bottom:24px; color:#ffaaaa;">Zombies breached the base core!</p>
+                <div style="font-family:'Orbitron',sans-serif; margin-bottom:30px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05); padding:20px; border-radius:8px; display:inline-block; text-align:left; min-width:260px;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:10px;"><span>WAVES COMPLETED:</span><span id="stat-waves" style="color:#00f0ff; font-weight:700;">0</span></div>
+                    <div style="display:flex; justify-content:space-between; margin-bottom:10px;"><span>ZOMBIES DEFEATED:</span><span id="stat-kills" style="color:#00ff88; font-weight:700;">0</span></div>
+                    <div style="display:flex; justify-content:space-between;"><span>ZOMBCOINS EARNED:</span><span id="stat-coins" style="color:#ffd700; font-weight:700;">0</span></div>
+                </div>
+                <button class="mode-btn online" id="btn-zombies-quit" style="border-color:#ff3333; color:#ff3333; margin:0 auto; min-width:180px;">RETURN TO MENU</button>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════
+             DEATH SCREEN
+             ═══════════════════════════════════════════════════ -->
+        <div id="death-screen">
+            <div class="death-panel">
+                <h2>YOU DIED</h2>
+                <p id="death-info">Killed by Bot-1</p>
+                <p>Respawning in <span id="respawn-timer">5</span>s</p>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════
+             PAUSE SCREEN
+             ═══════════════════════════════════════════════════ -->
+        <div id="pause-screen">
+            <div class="pause-panel">
+                <h2>PAUSED</h2>
+                <button class="mode-btn offline" id="btn-resume">RESUME</button>
+                <button class="mode-btn online" id="btn-quit">QUIT TO MENU</button>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════
+             CLICK TO PLAY OVERLAY
+             ═══════════════════════════════════════════════════ -->
+        <div id="click-to-play" style="display:none; position:fixed; inset:0; z-index:90;
+            background:rgba(0,0,0,0.6); cursor:pointer;
+            display:none; justify-content:center; align-items:center;">
+            <div style="text-align:center; font-family:'Orbitron',monospace; pointer-events:none;">
+                <p style="font-size:28px; color:#00f0ff; letter-spacing:6px; text-transform:uppercase;
+                    text-shadow: 0 0 20px rgba(0,240,255,0.5);">CLICK TO PLAY</p>
+                <p style="font-size:14px; color:rgba(255,255,255,0.5); margin-top:12px; letter-spacing:2px;">
+                    WASD to move · Mouse to aim · Click to shoot</p>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Three.js import map (ES modules) -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module" src="js/Game.js?v=2"></script>
+</body>
+</html>
