@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Chronicles of Restrictia: Definitive Edition</title>
+    <link rel="stylesheet" href="css/style.css">
+    
+    <!-- Babylon.js WebGL Engine -->
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+    <script src="https://cdn.babylonjs.com/gui/babylon.gui.min.js"></script>
+</head>
+<body>
+    <!-- 3D WebGL Canvas Container -->
+    <div id="game-container"></div>
+
+    <!-- Scanline Dystopian Overlay -->
+    <div class="scanlines"></div>
+
+    <!-- UI Overlay Layer -->
+    <div id="ui-overlay">
+        <!-- Letterboxing for Cutscenes -->
+        <div id="letterbox-top" class="letterbox"></div>
+        <div id="letterbox-bottom" class="letterbox"></div>
+
+        <!-- Crosshair -->
+        <div id="crosshair" class="screen-hidden"></div>
+
+        <!-- Interaction Prompt -->
+        <div id="interact-prompt" class="screen-hidden">
+            <span class="key-badge">E</span>
+            <span id="interact-label">Interact</span>
+        </div>
+
+        <!-- HUD: Morale, Objective, Inventory -->
+        <div id="hud" class="screen-hidden">
+            <div id="morale-bar">
+                <div class="bar-label">MORALE</div>
+                <div class="bar-track"><div id="morale-fill"></div></div>
+                <div id="morale-value">50%</div>
+            </div>
+
+            <div id="drown-bar" class="screen-hidden">
+                <div class="bar-label">OXYGEN</div>
+                <div class="bar-track"><div id="drown-fill"></div></div>
+                <div id="drown-value">100%</div>
+            </div>
+
+            <div id="objective-display" class="screen-hidden">
+                <div class="obj-header">OBJECTIVE</div>
+                <div id="objective-text"></div>
+            </div>
+
+            <div id="inventory-display" class="screen-hidden">
+                <div class="inv-header">ITEMS</div>
+                <div id="inventory-items"></div>
+            </div>
+        </div>
+
+        <!-- Dialogue Box -->
+        <div id="dialogue-container" class="screen-hidden">
+            <div id="dialogue-box">
+                <div id="dialogue-speaker"></div>
+                <div id="dialogue-text"></div>
+                <div id="dialogue-choices"></div>
+                <div id="dialogue-continue" class="continue-prompt screen-hidden">Press [ SPACE ] to continue...</div>
+            </div>
+        </div>
+
+        <!-- Narration Overlay -->
+        <div id="narration-container" class="screen-hidden">
+            <div id="narration-text"></div>
+            <div id="narration-continue" class="continue-prompt">Press [ SPACE ] to continue...</div>
+        </div>
+
+        <!-- Act Title Cards -->
+        <div id="title-card" class="screen-hidden">
+            <h1 id="title-main">ACT I</h1>
+            <h3 id="title-sub">The Rations Room</h3>
+        </div>
+
+        <!-- Cutscene Text Overlay -->
+        <div id="cutscene-container" class="screen-hidden">
+            <div id="cutscene-text"></div>
+        </div>
+
+        <!-- Screen Fade Layer -->
+        <div id="fade-overlay"></div>
+    </div>
+
+    <!-- Start / Main Menu Screen -->
+    <div id="start-screen">
+        <div class="title-container">
+            <h1 class="glitch-title" data-text="RESTRICTIA">RESTRICTIA</h1>
+            <p class="subtitle">THE CHRONICLES OF RESTRICTIA — DEFINITIVE EDITION</p>
+        </div>
+        
+        <div id="mode-select-container" class="menu-container">
+            <button id="story-mode-btn" class="start-btn">STORY MODE</button>
+            <button id="freeplay-btn" class="start-btn secondary">FREEPLAY (ACT SELECT)</button>
+        </div>
+
+        <!-- Freeplay Act Select Modal -->
+        <div id="act-select-modal" class="screen-hidden">
+            <h2>SELECT STARTING ACT</h2>
+            <div class="act-grid">
+                <button class="act-select-btn" data-act="0">
+                    <span class="act-num">ACT I</span>
+                    <span class="act-name">The Rations Room (2021-2022)</span>
+                </button>
+                <button class="act-select-btn" data-act="1">
+                    <span class="act-num">ACT II</span>
+                    <span class="act-name">The Great Split (July 2023)</span>
+                </button>
+                <button class="act-select-btn" data-act="2">
+                    <span class="act-num">ACT III</span>
+                    <span class="act-name">Tragedy & The Anchor (2023-2025)</span>
+                </button>
+                <button class="act-select-btn" data-act="3">
+                    <span class="act-num">ACT IV</span>
+                    <span class="act-name">The Spark of Rebellion (2026)</span>
+                </button>
+                <button class="act-select-btn" data-act="4">
+                    <span class="act-num">ACT V</span>
+                    <span class="act-name">Flight from Restrictia (2026)</span>
+                </button>
+                <button class="act-select-btn" data-act="5">
+                    <span class="act-num">ACT VI</span>
+                    <span class="act-name">Shores of Freedom (2026)</span>
+                </button>
+                <button class="act-select-btn" data-act="6">
+                    <span class="act-num">ACT VII</span>
+                    <span class="act-name">Epilogue — The Enshrinement (2027)</span>
+                </button>
+            </div>
+            <button id="back-to-menu-btn" class="start-btn secondary">BACK TO MENU</button>
+        </div>
+
+        <div class="controls-hint">
+            <span>WASD — Move</span> | <span>MOUSE — Look</span> | <span>E — Interact</span> | <span>SPACE — Advance Text</span>
+        </div>
+    </div>
+
+    <!-- Loading Screen -->
+    <div id="loading-screen">
+        <div class="spinner"></div>
+        <p>INITIALIZING RESTRICTIA PROTOCOLS...</p>
+        <div id="loading-bar"><div id="loading-bar-fill"></div></div>
+        <div id="loading-status">LOADING ENGINE...</div>
+    </div>
+
+    <script type="module" src="js/game.js"></script>
+</body>
+</html>
