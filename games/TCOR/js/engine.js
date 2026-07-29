@@ -95,10 +95,164 @@ export class Engine {
         this.maxDrownTime = 30;
         this.onDrown = null;
 
+        // Setup Mobile Touch Controls
+        this.setupTouchControls();
+
         // Start render loop
         this.babylonEngine.runRenderLoop(() => {
             this.scene.render();
         });
+    }
+
+    setupTouchControls() {
+        const mobileControls = document.getElementById('mobile-controls');
+        const joystickZone = document.getElementById('joystick-zone');
+        const joystickKnob = document.getElementById('joystick-knob');
+        const touchLookZone = document.getElementById('touch-look-zone');
+        const btnInteract = document.getElementById('btn-touch-interact');
+        const btnSwim = document.getElementById('btn-touch-swim');
+        const btnSprint = document.getElementById('btn-touch-sprint');
+
+        const showMobileUI = () => {
+            if (mobileControls) mobileControls.classList.remove('touch-hidden');
+        };
+
+        if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+            showMobileUI();
+        }
+        window.addEventListener('touchstart', showMobileUI, { once: true });
+
+        // Joystick Movement Logic
+        let joystickTouchId = null;
+        let joyCenter = { x: 0, y: 0 };
+
+        if (joystickZone) {
+            joystickZone.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                const touch = e.changedTouches[0];
+                joystickTouchId = touch.identifier;
+                const rect = joystickZone.getBoundingClientRect();
+                joyCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+            }, { passive: false });
+
+            window.addEventListener('touchmove', (e) => {
+                if (joystickTouchId === null) return;
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                    const touch = e.changedTouches[i];
+                    if (touch.identifier === joystickTouchId) {
+                        const dx = touch.clientX - joyCenter.x;
+                        const dy = touch.clientY - joyCenter.y;
+                        const dist = Math.hypot(dx, dy);
+                        const maxDist = 45;
+                        const angle = Math.atan2(dy, dx);
+                        const clampedDist = Math.min(dist, maxDist);
+
+                        const knobX = 45 + Math.cos(angle) * clampedDist;
+                        const knobY = 45 + Math.sin(angle) * clampedDist;
+                        if (joystickKnob) joystickKnob.style.transform = `translate(${knobX - 45}px, ${knobY - 45}px)`;
+
+                        const normX = (dx / maxDist);
+                        const normY = (dy / maxDist);
+
+                        this.keys.w = normY < -0.25;
+                        this.keys.s = normY > 0.25;
+                        this.keys.a = normX < -0.25;
+                        this.keys.d = normX > 0.25;
+                    }
+                }
+            }, { passive: false });
+
+            const endJoystick = (e) => {
+                if (joystickTouchId === null) return;
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                    if (e.changedTouches[i].identifier === joystickTouchId) {
+                        joystickTouchId = null;
+                        if (joystickKnob) joystickKnob.style.transform = 'translate(0px, 0px)';
+                        this.keys.w = false;
+                        this.keys.s = false;
+                        this.keys.a = false;
+                        this.keys.d = false;
+                    }
+                }
+            };
+
+            window.addEventListener('touchend', endJoystick);
+            window.addEventListener('touchcancel', endJoystick);
+        }
+
+        // Swipe Look Zone Logic
+        let lookTouchId = null;
+        let lastLookPos = { x: 0, y: 0 };
+
+        if (touchLookZone) {
+            touchLookZone.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                const touch = e.changedTouches[0];
+                lookTouchId = touch.identifier;
+                lastLookPos = { x: touch.clientX, y: touch.clientY };
+            }, { passive: false });
+
+            window.addEventListener('touchmove', (e) => {
+                if (lookTouchId === null || !this.player.canMove) return;
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                    const touch = e.changedTouches[i];
+                    if (touch.identifier === lookTouchId) {
+                        const dx = touch.clientX - lastLookPos.x;
+                        const dy = touch.clientY - lastLookPos.y;
+                        lastLookPos = { x: touch.clientX, y: touch.clientY };
+
+                        this.yaw += dx * 0.005;
+                        this.pitch += dy * 0.005;
+                        this.pitch = Math.max(-1.4, Math.min(1.4, this.pitch));
+
+                        this.playerRig.rotation.y = this.yaw;
+                        this.camera.rotation.x = this.pitch;
+                        this.camera.rotation.z = 0; // CAMERA LOCKED ON Z AXIS!
+                    }
+                }
+            }, { passive: false });
+
+            const endLook = (e) => {
+                if (lookTouchId === null) return;
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                    if (e.changedTouches[i].identifier === lookTouchId) {
+                        lookTouchId = null;
+                    }
+                }
+            };
+
+            window.addEventListener('touchend', endLook);
+            window.addEventListener('touchcancel', endLook);
+        }
+
+        // Touch Action Buttons
+        if (btnInteract) {
+            btnInteract.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                if (this.currentInteractable && this.onInteract) {
+                    this.onInteract.call(null, this.currentInteractable);
+                }
+            });
+        }
+
+        if (btnSwim) {
+            btnSwim.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                this.keys.space = true;
+            });
+            btnSwim.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                this.keys.space = false;
+            });
+        }
+
+        if (btnSprint) {
+            btnSprint.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                this.keys.shift = !this.keys.shift;
+                btnSprint.style.borderColor = this.keys.shift ? '#ffaa00' : 'rgba(0, 255, 204, 0.5)';
+            });
+        }
     }
 
     onKeyDown(e) {
@@ -268,6 +422,9 @@ export class Engine {
     }
 
     update(delta) {
+        // Enforce Camera Z-axis Lock (No head roll/tilt)
+        this.camera.rotation.z = 0;
+
         if (!this.player.canMove) return;
 
         // Screen Shake Decay
