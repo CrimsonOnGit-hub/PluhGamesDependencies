@@ -29,6 +29,7 @@ class Game {
         };
 
         this.setupEngineHooks();
+        this.setupPauseAndSettingsUI();
         this.setupStartScreen();
     }
 
@@ -36,6 +37,12 @@ class Game {
         this.engine.onInteract = (interactable) => {
             if (interactable && interactable.callback) {
                 interactable.callback();
+            }
+        };
+
+        this.engine.onPointerLockChange = (isLocked) => {
+            if (!isLocked && this.state.isExploring && !this.state.isPaused) {
+                this.showPauseMenu();
             }
         };
 
@@ -77,6 +84,91 @@ class Game {
             }
         };
         requestAnimationFrame(animate);
+    }
+
+    setupPauseAndSettingsUI() {
+        const pauseMenu = document.getElementById('pause-menu');
+        const settingsModal = document.getElementById('settings-modal');
+        const resumeBtn = document.getElementById('resume-btn');
+        const pauseSettingsBtn = document.getElementById('pause-settings-btn');
+        const startSettingsBtn = document.getElementById('start-settings-btn');
+        const closeSettingsBtn = document.getElementById('close-settings-btn');
+        const toggleMobileBtn = document.getElementById('toggle-mobile-btn');
+        const mainMenuBtn = document.getElementById('main-menu-btn');
+
+        if (resumeBtn) {
+            resumeBtn.addEventListener('click', () => {
+                this.hidePauseMenu();
+                if (this.state.isExploring) {
+                    this.engine.enablePointerLock();
+                }
+            });
+        }
+
+        if (pauseSettingsBtn) {
+            pauseSettingsBtn.addEventListener('click', () => {
+                this.showSettings();
+            });
+        }
+
+        if (startSettingsBtn) {
+            startSettingsBtn.addEventListener('click', () => {
+                this.showSettings();
+            });
+        }
+
+        if (closeSettingsBtn) {
+            closeSettingsBtn.addEventListener('click', () => {
+                this.hideSettings();
+            });
+        }
+
+        if (toggleMobileBtn) {
+            toggleMobileBtn.addEventListener('click', () => {
+                const isCurrentlyActive = toggleMobileBtn.classList.contains('active');
+                this.engine.setMobileControlsEnabled(!isCurrentlyActive);
+            });
+        }
+
+        if (mainMenuBtn) {
+            mainMenuBtn.addEventListener('click', () => {
+                this.hidePauseMenu();
+                this.hideSettings();
+                this.state.isExploring = false;
+                this.engine.setPlayerCanMove(false);
+                this.ui.hideHUD();
+                this.ui.hideCrosshair();
+                const startScreen = document.getElementById('start-screen');
+                if (startScreen) startScreen.classList.remove('screen-hidden');
+            });
+        }
+    }
+
+    showPauseMenu() {
+        const pauseMenu = document.getElementById('pause-menu');
+        if (pauseMenu) pauseMenu.classList.remove('screen-hidden');
+        this.state.isPaused = true;
+        this.engine.disablePointerLock();
+        this.engine.setPlayerCanMove(false);
+    }
+
+    hidePauseMenu() {
+        const pauseMenu = document.getElementById('pause-menu');
+        if (pauseMenu) pauseMenu.classList.add('screen-hidden');
+        this.state.isPaused = false;
+        if (this.state.isExploring) {
+            this.engine.setPlayerCanMove(true);
+        }
+    }
+
+    showSettings() {
+        const settingsModal = document.getElementById('settings-modal');
+        if (settingsModal) settingsModal.classList.remove('screen-hidden');
+    }
+
+    hideSettings() {
+        const settingsModal = document.getElementById('settings-modal');
+        if (settingsModal) settingsModal.classList.add('screen-hidden');
     }
 
     setupStartScreen() {

@@ -88,6 +88,28 @@
         <!-- Screen Fade Layer -->
         <div id="fade-overlay"></div>
 
+        <!-- Pause Menu Modal -->
+        <div id="pause-menu" class="menu-modal screen-hidden">
+            <div class="menu-card">
+                <h2>GAME PAUSED</h2>
+                <button id="resume-btn" class="menu-btn primary">RESUME GAME</button>
+                <button id="pause-settings-btn" class="menu-btn">SETTINGS</button>
+                <button id="main-menu-btn" class="menu-btn danger">MAIN MENU</button>
+            </div>
+        </div>
+
+        <!-- Settings Modal -->
+        <div id="settings-modal" class="menu-modal screen-hidden">
+            <div class="menu-card">
+                <h2>SETTINGS</h2>
+                <div class="setting-row">
+                    <span>Mobile Touch Controls</span>
+                    <button id="toggle-mobile-btn" class="toggle-btn">OFF</button>
+                </div>
+                <button id="close-settings-btn" class="menu-btn primary">BACK</button>
+            </div>
+        </div>
+
         <!-- Touch Mobile Controls -->
         <div id="mobile-controls" class="touch-hidden">
             <div id="joystick-zone">
@@ -114,6 +136,7 @@
         <div id="mode-select-container" class="menu-container">
             <button id="story-mode-btn" class="start-btn">STORY MODE</button>
             <button id="freeplay-btn" class="start-btn secondary">FREEPLAY (ACT SELECT)</button>
+            <button id="start-settings-btn" class="start-btn secondary">⚙️ SETTINGS</button>
         </div>
 
         <!-- Freeplay Act Select Modal -->

@@ -71,6 +71,13 @@ export class Engine {
             }
         });
 
+        document.addEventListener('pointerlockchange', () => {
+            const isLocked = (document.pointerLockElement === this.canvas);
+            if (this.onPointerLockChange) {
+                this.onPointerLockChange(isLocked);
+            }
+        });
+
         window.addEventListener('keydown', (e) => this.onKeyDown(e));
         window.addEventListener('keyup', (e) => this.onKeyUp(e));
         window.addEventListener('resize', () => this.onResize());
@@ -81,6 +88,7 @@ export class Engine {
         this.interactables = new Map();
         this.currentInteractable = null;
         this.onInteract = null;
+        this.onPointerLockChange = null;
 
         // Lighting & Effects
         this.ambientLight = null;
@@ -253,6 +261,34 @@ export class Engine {
                 btnSprint.style.borderColor = this.keys.shift ? '#ffaa00' : 'rgba(0, 255, 204, 0.5)';
             });
         }
+
+        // Restore saved preference if exists
+        const savedPref = localStorage.getItem('tcor_mobile_controls');
+        if (savedPref !== null) {
+            this.setMobileControlsEnabled(savedPref === 'true');
+        }
+    }
+
+    setMobileControlsEnabled(enabled) {
+        const mobileControls = document.getElementById('mobile-controls');
+        const toggleBtn = document.getElementById('toggle-mobile-btn');
+        if (mobileControls) {
+            if (enabled) {
+                mobileControls.classList.remove('touch-hidden');
+            } else {
+                mobileControls.classList.add('touch-hidden');
+            }
+        }
+        if (toggleBtn) {
+            if (enabled) {
+                toggleBtn.classList.add('active');
+                toggleBtn.textContent = 'ON';
+            } else {
+                toggleBtn.classList.remove('active');
+                toggleBtn.textContent = 'OFF';
+            }
+        }
+        localStorage.setItem('tcor_mobile_controls', enabled ? 'true' : 'false');
     }
 
     onKeyDown(e) {
