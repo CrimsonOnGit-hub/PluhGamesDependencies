@@ -73,6 +73,9 @@ export class Engine {
 
         document.addEventListener('pointerlockchange', () => {
             const isLocked = (document.pointerLockElement === this.canvas);
+            if (!isLocked) {
+                this.lastPointerLockExitTime = performance.now();
+            }
             if (this.onPointerLockChange) {
                 this.onPointerLockChange(isLocked);
             }
@@ -89,6 +92,7 @@ export class Engine {
         this.currentInteractable = null;
         this.onInteract = null;
         this.onPointerLockChange = null;
+        this.lastPointerLockExitTime = 0;
 
         // Lighting & Effects
         this.ambientLight = null;
@@ -310,7 +314,16 @@ export class Engine {
 
     enablePointerLock() {
         if (this.canvas.requestPointerLock) {
-            this.canvas.requestPointerLock();
+            try {
+                const res = this.canvas.requestPointerLock();
+                if (res && typeof res.catch === 'function') {
+                    res.catch(() => {
+                        // Suppress pointer lock rate limiting error
+                    });
+                }
+            } catch (err) {
+                // Catch sync pointer lock error
+            }
         }
     }
 

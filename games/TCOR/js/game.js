@@ -41,7 +41,11 @@ class Game {
         };
 
         this.engine.onPointerLockChange = (isLocked) => {
-            if (!isLocked && this.state.isExploring && !this.state.isPaused) {
+            const dialogueActive = !document.getElementById('dialogue-container').classList.contains('screen-hidden');
+            const narrationActive = !document.getElementById('narration-container').classList.contains('screen-hidden');
+            const cutsceneActive = !document.getElementById('cutscene-container').classList.contains('screen-hidden');
+
+            if (!isLocked && this.state.isExploring && !this.state.isPaused && !dialogueActive && !narrationActive && !cutsceneActive) {
                 this.showPauseMenu();
             }
         };
