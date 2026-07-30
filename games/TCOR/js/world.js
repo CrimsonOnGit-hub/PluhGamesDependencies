@@ -169,59 +169,54 @@ export class World {
         headNode.position.y = 0.75;
         joints.head = headNode;
 
-        const headMesh = BABYLON.MeshBuilder.CreateSphere("head", { diameter: 0.42 }, scene);
+        const headMesh = BABYLON.MeshBuilder.CreateSphere("head", { diameter: 0.44 }, scene);
         headMesh.parent = headNode;
         headMesh.position.y = 0.21;
-        headMesh.material = skinMat;
+        headMesh.material = (hairType === 'guard') ? hairMat : skinMat;
 
-        // Facial Features: Eyes, Eyebrows, Nose, Ears
-        const leftEye = BABYLON.MeshBuilder.CreateSphere("leftEye", { diameter: 0.06 }, scene);
-        leftEye.parent = headMesh;
-        leftEye.position.set(-0.09, 0.04, 0.19);
-        leftEye.material = eyeMat;
+        // Facial Features (Only for human faces, not full-helmet guards)
+        if (hairType !== 'guard') {
+            const leftEye = BABYLON.MeshBuilder.CreateSphere("leftEye", { diameter: 0.06 }, scene);
+            leftEye.parent = headMesh;
+            leftEye.position.set(-0.09, 0.04, 0.19);
+            leftEye.material = eyeMat;
 
-        const rightEye = BABYLON.MeshBuilder.CreateSphere("rightEye", { diameter: 0.06 }, scene);
-        rightEye.parent = headMesh;
-        rightEye.position.set(0.09, 0.04, 0.19);
-        rightEye.material = eyeMat;
+            const rightEye = BABYLON.MeshBuilder.CreateSphere("rightEye", { diameter: 0.06 }, scene);
+            rightEye.parent = headMesh;
+            rightEye.position.set(0.09, 0.04, 0.19);
+            rightEye.material = eyeMat;
 
-        // Eyebrows
-        const eyebrowL = BABYLON.MeshBuilder.CreateBox("eyebrowL", { width: 0.08, height: 0.015, depth: 0.02 }, scene);
-        eyebrowL.parent = headMesh;
-        eyebrowL.position.set(-0.09, 0.09, 0.2);
-        eyebrowL.material = hairMat;
+            const eyebrowL = BABYLON.MeshBuilder.CreateBox("eyebrowL", { width: 0.08, height: 0.015, depth: 0.02 }, scene);
+            eyebrowL.parent = headMesh;
+            eyebrowL.position.set(-0.09, 0.09, 0.2);
+            eyebrowL.material = hairMat;
 
-        const eyebrowR = BABYLON.MeshBuilder.CreateBox("eyebrowR", { width: 0.08, height: 0.015, depth: 0.02 }, scene);
-        eyebrowR.parent = headMesh;
-        eyebrowR.position.set(0.09, 0.09, 0.2);
-        eyebrowR.material = hairMat;
+            const eyebrowR = BABYLON.MeshBuilder.CreateBox("eyebrowR", { width: 0.08, height: 0.015, depth: 0.02 }, scene);
+            eyebrowR.parent = headMesh;
+            eyebrowR.position.set(0.09, 0.09, 0.2);
+            eyebrowR.material = hairMat;
 
-        // Nose & Ears
-        const nose = BABYLON.MeshBuilder.CreateBox("nose", { width: 0.03, height: 0.05, depth: 0.04 }, scene);
-        nose.parent = headMesh;
-        nose.position.set(0, 0.01, 0.21);
-        nose.material = skinMat;
+            const nose = BABYLON.MeshBuilder.CreateBox("nose", { width: 0.03, height: 0.05, depth: 0.04 }, scene);
+            nose.parent = headMesh;
+            nose.position.set(0, 0.01, 0.21);
+            nose.material = skinMat;
 
-        const earL = BABYLON.MeshBuilder.CreateSphere("earL", { diameter: 0.08 }, scene);
-        earL.parent = headMesh;
-        earL.position.set(-0.21, 0.02, 0);
-        earL.material = skinMat;
+            const earL = BABYLON.MeshBuilder.CreateSphere("earL", { diameter: 0.08 }, scene);
+            earL.parent = headMesh;
+            earL.position.set(-0.21, 0.02, 0);
+            earL.material = skinMat;
 
-        const earR = BABYLON.MeshBuilder.CreateSphere("earR", { diameter: 0.08 }, scene);
-        earR.parent = headMesh;
-        earR.position.set(0.21, 0.02, 0);
-        earR.material = skinMat;
+            const earR = BABYLON.MeshBuilder.CreateSphere("earR", { diameter: 0.08 }, scene);
+            earR.parent = headMesh;
+            earR.position.set(0.21, 0.02, 0);
+            earR.material = skinMat;
+        }
 
         // Hair / Guard Helmet Styling
         if (hairType === 'guard') {
-            const helmet = BABYLON.MeshBuilder.CreateSphere("helmet", { diameter: 0.47 }, scene);
-            helmet.parent = headMesh;
-            helmet.position.set(0, 0.04, 0);
-            helmet.material = hairMat;
-
-            const visor = BABYLON.MeshBuilder.CreateBox("visor", { width: 0.32, height: 0.1, depth: 0.06 }, scene);
-            visor.parent = helmet;
-            visor.position.set(0, 0.04, 0.19);
+            const visor = BABYLON.MeshBuilder.CreateBox("visor", { width: 0.34, height: 0.1, depth: 0.08 }, scene);
+            visor.parent = headMesh;
+            visor.position.set(0, 0.02, 0.18);
             visor.material = visorMat;
         } else if (hairType === 'female') {
             const hairBase = BABYLON.MeshBuilder.CreateSphere("hairBase", { diameter: 0.46 }, scene);
@@ -254,6 +249,34 @@ export class World {
 
         root.userData = { joints };
         return root;
+    }
+
+    async loadOrFallbackCharacter(characterType, hairColorHex = 0x221100, heightScale = 1.7, hairType = 'spiky') {
+        const modelUrls = {
+            guard: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/RobotExpressive/glTF-Binary/RobotExpressive.glb',
+            female: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/Fox/glTF-Binary/Fox.glb',
+            male: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/CesiumMan/glTF-Binary/CesiumMan.glb'
+        };
+
+        const url = modelUrls[characterType];
+        if (url) {
+            try {
+                const result = await Promise.race([
+                    BABYLON.SceneLoader.ImportMeshAsync("", "", url, this.engine.scene),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 3500))
+                ]);
+
+                if (result && result.meshes && result.meshes.length > 0) {
+                    const rootMesh = result.meshes[0];
+                    rootMesh.scaling.set(heightScale / 1.7 * 0.85, heightScale / 1.7 * 0.85, heightScale / 1.7 * 0.85);
+                    return rootMesh;
+                }
+            } catch (err) {
+                console.warn(`GLTF model load failed for ${characterType}, using high-detail procedural model:`, err);
+            }
+        }
+
+        return this.createCharacterMesh(hairColorHex, heightScale, true, hairType);
     }
 
     // Joint Animation Engine in Babylon.js
