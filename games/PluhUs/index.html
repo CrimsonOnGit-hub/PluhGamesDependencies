@@ -2,110 +2,73 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>ChromeUs Engine</title>
-    <link href="https://fonts.googleapis.com/css2?family=Varela+Round&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PluhGames Legacy</title>
     <style>
-        .sabo-wall { position: absolute; background: #4a5a6a; }
+        body {
+            background-color: #f0f0f0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+            color: #333333;
+            text-align: center;
+        }
+
+        .container {
+            margin: auto;
+            max-width: 600px;
+        }
+
+        .icon {
+            font-size: 72px;
+            font-weight: bold;
+            color: #d9534f;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            font-size: 28px;
+            margin-bottom: 15px;
+        }
+
+        p {
+            font-size: 18px;
+            line-height: 1.5;
+        }
+
+        a {
+            color: #0066cc;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        footer {
+            font-size: 14px;
+            color: #666666;
+        }
     </style>
 </head>
 <body>
 
-    <div id="game-container">
-        <canvas id="gameCanvas"></canvas>
-        
-        <div id="mode-toggle" onclick="toggleGameMode()">Mode: Random Role</div>
-        
-        <div id="task-list">
-            <h3 style="margin:0; color:#ff4747;">Impostor</h3>
-            <p>Sabotage and kill everyone.</p>
-        </div>
-
-        <div id="hud-buttons">
-            <div id="use-btn" class="action-btn">USE (Spc)</div>
-            <div id="sabotage-btn" class="action-btn active-sabotage" onclick="toggleSabotageMap()">SABO (F)</div>
-            <div id="vent-btn" class="action-btn" style="display: none;">VENT (V)</div>
-            <div id="kill-btn" class="action-btn">KILL (E)</div>
-            <div id="report-btn" class="action-btn">REPORT (R)</div>
-        </div>
-
-        <div id="sabotage-layer" style="display: none;">
-            <div id="sabo-map-container">
-                <h2 style="color: #ff4747; text-align: center; margin-top: 0;">SABOTAGE MAP</h2>
-                <div id="sabo-map" style="position: relative; width: 100%; aspect-ratio: 4/3; background: #2a2a2a; border: 4px solid #fff; border-radius: 8px; overflow: hidden; box-shadow: inset 0 0 20px rgba(0,0,0,0.8);">
-                    
-                    <div class="sabo-wall" style="left: 0; top: 0; width: 100%; height: 3.33%;"></div> 
-                    <div class="sabo-wall" style="left: 0; top: 96.66%; width: 100%; height: 3.33%;"></div> 
-                    <div class="sabo-wall" style="left: 0; top: 0; width: 2.5%; height: 100%;"></div> 
-                    <div class="sabo-wall" style="left: 97.5%; top: 0; width: 2.5%; height: 100%;"></div> 
-
-                    <div class="sabo-wall" style="left: 20%; top: 0%; width: 5%; height: 36.66%;"></div>
-                    <div class="sabo-wall" style="left: 20%; top: 56.66%; width: 5%; height: 43.33%;"></div>
-
-                    <div class="sabo-wall" style="left: 50%; top: 20%; width: 30%; height: 6.66%;"></div> 
-                    <div class="sabo-wall" style="left: 50%; top: 66.66%; width: 30%; height: 6.66%;"></div> 
-                    <div class="sabo-wall" style="left: 50%; top: 26.66%; width: 5%; height: 10%;"></div> 
-                    <div class="sabo-wall" style="left: 50%; top: 56.66%; width: 5%; height: 10%;"></div> 
-
-                    <div class="sabo-wall" style="left: 40%; top: 0%; width: 5%; height: 20%;"></div>
-                    <div class="sabo-wall" style="left: 55%; top: 0%; width: 5%; height: 20%;"></div>
-
-                    <div class="sabo-wall" style="left: 40%; top: 80%; width: 5%; height: 20%;"></div>
-                    <div class="sabo-wall" style="left: 55%; top: 80%; width: 5%; height: 20%;"></div>
-                    
-                    <button id="sabo-door-1" class="sabo-icon door-icon" style="position: absolute; top: 46.66%; left: 22.5%; transform: translate(-50%, -50%); margin: 0;" onclick="triggerSabotage('door-1')">🚪</button>
-                    <button id="sabo-door-2" class="sabo-icon door-icon" style="position: absolute; top: 46.66%; left: 52.5%; transform: translate(-50%, -50%); margin: 0;" onclick="triggerSabotage('door-2')">🚪</button>
-                    <button id="sabo-door-3" class="sabo-icon door-icon" style="position: absolute; top: 20%; left: 50%; transform: translate(-50%, -50%); margin: 0;" onclick="triggerSabotage('door-3')">🚪</button>
-                    <button id="sabo-door-4" class="sabo-icon door-icon" style="position: absolute; top: 80%; left: 50%; transform: translate(-50%, -50%); margin: 0;" onclick="triggerSabotage('door-4')">🚪</button>
-                    
-                    <button id="sabo-lights" class="sabo-icon lights-icon" style="position: absolute; top: 8%; left: 50%; transform: translate(-50%, -50%); margin: 0;" onclick="triggerSabotage('lights')">⚡</button>
-                </div>
-                <button class="vote-btn skip-btn" style="margin-top: 15px; width: 100%;" onclick="toggleSabotageMap()">Close Map</button>
-            </div>
-        </div>
-        
-        <div id="voting-layer" style="display: none;">
-            <div id="tablet-screen">
-                <h2 id="voting-title">Emergency Meeting</h2>
-                <div id="chat-box"></div>
-                <div id="quick-chat-ui">
-                    <select id="quick-chat-select" class="chat-select">
-                        <option value="" disabled selected>-- Quick Chat --</option>
-                        <optgroup label="General">
-                            <option value="Where?">Where?</option>
-                            <option value="Who?">Who?</option>
-                            <option value="I was doing tasks.">I was doing tasks.</option>
-                            <option value="Any proof?">Any proof?</option>
-                            <option value="Skip vote.">Skip vote.</option>
-                        </optgroup>
-                        <optgroup id="qc-accuse" label="Accuse"></optgroup>
-                    </select>
-                    <button class="vote-btn" style="padding: 10px 20px;" onclick="sendPlayerChat()">Send</button>
-                </div>
-                <div id="voting-buttons"></div>
-            </div>
-        </div>
-
-        <div id="task-layer" style="display: none;">
-            <div id="task-screen">
-                <h2>Fix Lights</h2>
-                <p>Flip all switches UP to restore power!</p>
-                <div id="switches-container">
-                    <div class="switch off" onclick="toggleSwitch(this)"></div>
-                    <div class="switch off" onclick="toggleSwitch(this)"></div>
-                    <div class="switch off" onclick="toggleSwitch(this)"></div>
-                    <div class="switch off" onclick="toggleSwitch(this)"></div>
-                    <div class="switch off" onclick="toggleSwitch(this)"></div>
-                </div>
-                <button class="vote-btn skip-btn" onclick="closeTask()">Close</button>
-            </div>
-        </div>
-
-        <div id="end-screen" style="display: none;">
-            <h1 id="end-text"></h1>
-        </div>
+    <div class="container">
+        <div class="icon">⚠️</div>
+        <h1>PluhGames Legacy is no longer supported</h1>
+        <p>Please go to the new website <a href="https://github.io">pluhmath.github.io</a> to continue playing on PluhMath.</p>
     </div>
 
-    <script src="script.js"></script>
+    <footer>
+        &copy; PluhMath 2026. All rights reserved. PluhMath is a subsidiary of Sequence Inc.
+    </footer>
+
 </body>
 </html>
