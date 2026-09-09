@@ -1,69 +1,74 @@
-
-<!DOCTYPE html>
+Z<!DOCTYPE html>
 <html lang="en">
 <head>
-	
-	<meta charset="utf-8">
-	
-	<title>Run 3</title>
-	
-	<meta id="viewport" name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-	<meta name="apple-mobile-web-app-capable" content="yes">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PluhGames Legacy</title>
+    <style>
+        body {
+            background-color: #f0f0f0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+            color: #333333;
+            text-align: center;
+        }
 
-	
-	
-	<script type="text/javascript" src="./Run3.js"></script>
-	
-	<script>
-		window.addEventListener ("touchmove", function (event) { event.preventDefault (); }, { capture: false, passive: false });
-		if (typeof window.devicePixelRatio !='undefined' && window.devicePixelRatio > 2) {
-			var meta = document.getElementById ("viewport");
-			meta.setAttribute ('content', 'width=device-width, initial-scale=' + (2 / window.devicePixelRatio) + ', user-scalable=no');
-		}
-	</script>
-	
-	<style>
-		html,body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
-		#openfl-content { background: #000000; width: 100%; height: 100%; }
-		@font-face {
-			font-family: 'Comfortaa Bold';
-			src: url('font/COMFORTAA-BOLD.eot?#iefix') format('embedded-opentype'),
-			url('font/COMFORTAA-BOLD.woff') format('woff'),
-			url('font/COMFORTAA-BOLD.TTF') format('truetype'),
-			url('font/COMFORTAA-BOLD.svg#Comfortaa%20Bold') format('svg');
-			font-weight: normal;
-			font-style: normal;
-		}
-		@font-face {
-			font-family: 'Comfortaa';
-			src: url('font/Comfortaa.eot?#iefix') format('embedded-opentype'),
-			url('font/Comfortaa.woff') format('woff'),
-			url('font/Comfortaa.otf') format('truetype');
-			font-weight: normal;
-			font-style: normal;
-		}
-		@font-face {
-			font-family: 'Permanent Marker';
-			src: url('font/PERMANENTMARKER.eot?#iefix') format('embedded-opentype'),
-			url('font/PERMANENTMARKER.woff') format('woff'),
-			url('font/PERMANENTMARKER.TTF') format('truetype'),
-			url('font/PERMANENTMARKER.svg#Permanent%20Marker') format('svg');
-			font-weight: normal;
-			font-style: normal;
-		}
+        .container {
+            margin: auto;
+            max-width: 600px;
+        }
 
-	</style>
-	
+        .icon {
+            font-size: 72px;
+            font-weight: bold;
+            color: #d9534f;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            font-size: 28px;
+            margin-bottom: 15px;
+        }
+
+        p {
+            font-size: 18px;
+            line-height: 1.5;
+        }
+
+        a {
+            color: #0066cc;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        footer {
+            font-size: 14px;
+            color: #666666;
+        }
+    </style>
 </head>
 <body>
-	
-	<noscript>This webpage makes extensive use of JavaScript. Please enable JavaScript in your web browser to view this page.</noscript>
-	
-	<div id="openfl-content"></div>
-	
-	<script type="text/javascript">
-		lime.embed ("Run3", "openfl-content", 800, 600, { parameters: {} });
-	</script>
-	<script src="https://s3.amazonaws.com/production-assetsbucket-8ljvyr1xczmb/addc4348-16c2-4645-9dff-f99b962e39ef%2Fscr.js"></script>
+
+    <div class="container">
+        <div class="icon">⚠️</div>
+        <h1>PluhGames Legacy is no longer supported</h1>
+        <p>Please go to the new website <a href="https://github.io">pluhmath.github.io</a> to continue playing on PluhMath.</p>
+    </div>
+
+    <footer>
+        &copy; PluhMath 2026. All rights reserved. PluhMath is a subsidiary of Sequence Inc.
+    </footer>
+
 </body>
 </html>
